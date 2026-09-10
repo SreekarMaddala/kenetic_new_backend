@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Kinetic ERP v2 — 12 domain Lambdas using 12 externally managed DynamoDB tables
+
+Parameters:
+  CognitoUserPoolId:
+    Type: String
+  CognitoClientId:
+    Type: String
+  OrganizationsTable:
+    Type: String
+    Default: kinetic-v2-organizations
+  UsersTable:
+    Type: String
+    Default: kinetic-v2-users
+  ProjectsTable:
+    Type: String
+    Default: kinetic-v2-projects
+  PartiesTable:
+    Type: String
+    Default: kinetic-v2-parties
+  FieldOperationsTable:
+    Type: String
+    Default: kinetic-v2-field-operations
+  SiteControlTable:
+    Type: String
+    Default: kinetic-v2-site-control
+  MaterialsLogisticsTable:
+    Type: String
+    Default: kinetic-v2-materials-logistics
+  DocumentControlTable:
+    Type: String
+    Default: kinetic-v2-document-control
+  InventoryTable:
+    Type: String
+    Default: kinetic-v2-inventory
+  FinanceTable:
+    Type: String
+    Default: kinetic-v2-finance
+  SettingsTable:
+    Type: String
+    Default: kinetic-v2-settings
+  AuditEventsTable:
+    Type: String
+    Default: kinetic-v2-audit-events
+
+Globals:
+  Function:
+    CodeUri: ./
+    Runtime: python3.13
+    Handler: handlers.consolidated.placeholder
+    Timeout: 20
+    MemorySize: 256
+    Environment:
+      Variables:
+        ORGANIZATIONS_TABLE: !Ref OrganizationsTable
+        USERS_TABLE: !Ref UsersTable
+        PROJECTS_TABLE: !Ref ProjectsTable
+        PARTIES_TABLE: !Ref PartiesTable
+        FIELD_OPERATIONS_TABLE: !Ref FieldOperationsTable
+        SITE_CONTROL_TABLE: !Ref SiteControlTable
+        MATERIALS_LOGISTICS_TABLE: !Ref MaterialsLogisticsTable
+        DOCUMENT_CONTROL_TABLE: !Ref DocumentControlTable
+        INVENTORY_TABLE: !Ref InventoryTable
+        FINANCE_TABLE: !Ref FinanceTable
+        SETTINGS_TABLE: !Ref SettingsTable
+        AUDIT_EVENTS_TABLE: !Ref AuditEventsTable
+        COGNITO_CLIENT_ID: !Ref CognitoClientId
+
+Resources:
+  KineticHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      CorsConfiguration:
+        AllowOrigins: ['*']
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        AllowHeaders: [Content-Type, Authorization]
+      Auth:
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              Audience: [!Ref CognitoClientId]
+              Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
+        DefaultAuthorizer: CognitoJwt
+
+
+  AuthFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.auth_handler, Policies: [AmazonCognitoPowerUser], Events: { Routes: { Type: HttpApi, Properties: { ApiId: !Ref KineticHttpApi, Path: '/auth/{proxy+}', Method: ANY, Auth: { Authorizer: NONE } } } } } }
+  PlatformAdminFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.platform_admin_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref OrganizationsTable}}, {DynamoDBCrudPolicy: {TableName: !Ref UsersTable}}, {DynamoDBCrudPolicy: {TableName: !Ref AuditEventsTable}}], Events: { Routes: { Type: HttpApi, Properties: { ApiId: !Ref KineticHttpApi, Path: '/super-admin/{proxy+}', Method: ANY } } } } }
+  ProjectsFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.projects_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref ProjectsTable}}, {DynamoDBCrudPolicy: {TableName: !Ref AuditEventsTable}}], Events: { Root: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: /projects, Method: ANY}}, Routes: { Type: HttpApi, Properties: { ApiId: !Ref KineticHttpApi, Path: '/projects/{proxy+}', Method: ANY } } } } }
+  ProjectCommercialFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.project_commercial_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref ProjectsTable}}, {DynamoDBCrudPolicy: {TableName: !Ref PartiesTable}}], Events: { BoqRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/boq', Method: ANY}}, Boq: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/boq/{proxy+}', Method: ANY}}, SubcontractorsRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/subcontractors', Method: ANY}}, Subcontractors: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/subcontractors/{proxy+}', Method: ANY}} } } }
+  WorkforceFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.workforce_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref FieldOperationsTable}}], Events: { Attendance: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/supervisor/attendance/{proxy+}', Method: ANY}}, Labour: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/supervisor/labour/{proxy+}', Method: ANY}} } } }
+  FieldOperationsFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.field_operations_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref FieldOperationsTable}}, {DynamoDBCrudPolicy: {TableName: !Ref MaterialsLogisticsTable}}], Events: { Routes: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/supervisor/{proxy+}', Method: ANY}} } } }
+  SiteControlFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.site_control_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref SiteControlTable}}], Events: { IssuesRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/issues', Method: ANY}}, Issues: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/issues/{proxy+}', Method: ANY}}, InspectionsRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/inspections', Method: ANY}}, Inspections: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/inspections/{proxy+}', Method: ANY}}, EquipmentRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/equipment', Method: ANY}}, Equipment: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/equipment/{proxy+}', Method: ANY}} } } }
+  DocumentControlFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.document_control_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref DocumentControlTable}}], Events: { DrawingsRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/drawings', Method: ANY}}, Drawings: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/drawings/{proxy+}', Method: ANY}}, DocumentsRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/documents', Method: ANY}}, Documents: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/documents/{proxy+}', Method: ANY}} } } }
+  SupplyChainFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.supply_chain_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref InventoryTable}}, {DynamoDBCrudPolicy: {TableName: !Ref PartiesTable}}], Events: { VendorsRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: /vendors, Method: ANY}}, Vendors: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/vendors/{proxy+}', Method: ANY}}, InventoryRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: /inventory, Method: ANY}}, Inventory: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/inventory/{proxy+}', Method: ANY}}, Warehouse: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/warehouse/{proxy+}', Method: ANY}} } } }
+  FinanceFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.finance_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref FinanceTable}}], Events: { PaymentsRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: /payments, Method: ANY}}, Payments: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/payments/{proxy+}', Method: ANY}}, BillsRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/bills', Method: ANY}}, Bills: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/bills/{proxy+}', Method: ANY}}, ExpensesRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/expenses', Method: ANY}}, Expenses: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/expenses/{proxy+}', Method: ANY}} } } }
+  GovernanceFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.governance_handler, Policies: [{DynamoDBCrudPolicy: {TableName: !Ref SettingsTable}}, {DynamoDBReadPolicy: {TableName: !Ref ProjectsTable}}, {DynamoDBReadPolicy: {TableName: !Ref FinanceTable}}], Events: { PayrollRoot: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/payroll', Method: ANY}}, PayrollRoutes: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/projects/{projectId}/payroll/{proxy+}', Method: ANY}}, Dashboard: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/dashboard/{proxy+}', Method: ANY}}, Reports: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: '/reports/{proxy+}', Method: ANY}}, Settings: {Type: HttpApi, Properties: {ApiId: !Ref KineticHttpApi, Path: /settings, Method: ANY}} } } }
+  MaintenanceJobsFunction: { Type: AWS::Serverless::Function, Properties: { Handler: handlers.consolidated.maintenance_handler, Policies: [{DynamoDBReadPolicy: {TableName: !Ref AuditEventsTable}}] } }
+
+Outputs:
+  KineticHttpApiUrl:
+    Value: !Sub https://${KineticHttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  ConsolidatedLambdaCount:
+    Value: '12'
+  ExternalTableCount:
+    Value: '12'

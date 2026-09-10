@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Kinetic Construction ERP - Cognito Authentication Resources Stack
+
+Resources:
+  # ─── Cognito User Pool ────────────────────────────────────────────────────────
+  KineticUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: kinetic-erp-user-pool
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: org_id
+          AttributeDataType: String
+          Mutable: false
+          StringAttributeConstraints:
+            MinLength: "1"
+            MaxLength: "64"
+
+  SuperAdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: super_admin
+      UserPoolId: !Ref KineticUserPool
+
+  OperationsAdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: operations_admin
+      UserPoolId: !Ref KineticUserPool
+
+  SupervisorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: supervisor
+      UserPoolId: !Ref KineticUserPool
+
+  KineticUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: kinetic-erp-web-client
+      UserPoolId: !Ref KineticUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID (set as CognitoUserPoolId parameter in main template & VITE_COGNITO_USER_POOL_ID in .env)
+    Value: !Ref KineticUserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+
+  UserPoolClientId:
+    Description: Cognito App Client ID (set as CognitoClientId parameter in main template & VITE_COGNITO_CLIENT_ID in .env)
+    Value: !Ref KineticUserPoolClient
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolClientId"
