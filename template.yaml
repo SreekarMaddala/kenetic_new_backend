@@ -79,11 +79,32 @@ Globals:
           Ref: SettingsTable
         AUDIT_EVENTS_TABLE:
           Ref: AuditEventsTable
+        DOCUMENTS_BUCKET:
+          Ref: DocumentsBucket
         COGNITO_CLIENT_ID:
           Ref: CognitoClientId
         COGNITO_USER_POOL_ID:
           Ref: CognitoUserPoolId
 Resources:
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+        - AllowedOrigins:
+          - Ref: FrontendOrigin
+          AllowedMethods: [GET, POST]
+          AllowedHeaders: ['*']
+          MaxAge: 300
   KineticHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -275,6 +296,12 @@ Resources:
       Policies:
       - DynamoDBReadPolicy:
           TableName:
+            Ref: FinanceTable
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: SettingsTable
+      - DynamoDBReadPolicy:
+          TableName:
             Ref: OrganizationsTable
       - DynamoDBReadPolicy:
           TableName:
@@ -443,6 +470,14 @@ Resources:
     Properties:
       Handler: handlers.consolidated.workforce_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SettingsTable}
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: SettingsTable
       - DynamoDBReadPolicy:
           TableName:
             Ref: OrganizationsTable
@@ -493,6 +528,9 @@ Resources:
     Properties:
       Handler: handlers.consolidated.field_operations_handler
       Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: InventoryTable
       - DynamoDBReadPolicy:
           TableName:
             Ref: OrganizationsTable
@@ -644,6 +682,13 @@ Resources:
     Properties:
       Handler: handlers.consolidated.document_control_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: textract:AnalyzeExpense
+          Resource: '*'
+      - S3CrudPolicy:
+          BucketName:
+            Ref: DocumentsBucket
       - DynamoDBReadPolicy:
           TableName:
             Ref: OrganizationsTable
@@ -726,6 +771,9 @@ Resources:
     Properties:
       Handler: handlers.consolidated.supply_chain_handler
       Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: MaterialsLogisticsTable
       - DynamoDBReadPolicy:
           TableName:
             Ref: OrganizationsTable
@@ -829,6 +877,9 @@ Resources:
       Policies:
       - DynamoDBReadPolicy:
           TableName:
+            Ref: PartiesTable
+      - DynamoDBReadPolicy:
+          TableName:
             Ref: OrganizationsTable
       - DynamoDBReadPolicy:
           TableName:
@@ -840,6 +891,39 @@ Resources:
           TableName:
             Ref: FinanceTable
       Events:
+        GlobalExpensesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        GlobalExpenseOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        GlobalExpenses:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses
+            Method: ANY
+        GlobalExpense:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses/{proxy+}
+            Method: ANY
+
         PaymentsRoot:
           Type: HttpApi
           Properties:
@@ -973,6 +1057,20 @@ Resources:
     Properties:
       Handler: handlers.consolidated.governance_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${FieldOperationsTable}
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: MaterialsLogisticsTable
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: PartiesTable
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: FieldOperationsTable
       - DynamoDBReadPolicy:
           TableName:
             Ref: OrganizationsTable

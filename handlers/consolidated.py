@@ -21,6 +21,7 @@ from common.authz import (
 )
 from common.dynamo import get_table, convert_floats_to_decimals
 from common.accounts import create_account, update_account, resend_invitation
+from common import workflows
 
 
 DOMAIN_CONFIG = {
@@ -239,7 +240,7 @@ def _check_route(domain, path, method):
         "site-control": r"/projects/[^/]+/(?:issues|inspections|equipment)",
         "document-control": r"/projects/[^/]+/(?:drawings|documents)",
         "supply-chain": r"/(?:vendors|inventory|warehouse/(?:grn|issue-vouchers))",
-        "finance": r"/(?:payments|projects/[^/]+/(?:payments|bills|expenses))",
+        "finance": r"/(?:payments|expenses|projects/[^/]+/(?:payments|bills|expenses))",
         "governance": r"/(?:settings|projects/[^/]+/payroll)",
     }
     if (domain, path, method) in {
@@ -248,14 +249,14 @@ def _check_route(domain, path, method):
         ("platform-admin", "/super-admin/metrics", "GET"),
     }:
         return True
-    suffix = r"(?:/[^/]+(?:/(?:status|invitation))?)?"
+    suffix = r"(?:/[^/]+(?:/(?:status|invitation|download|extract))?)?"
     return bool(re.fullmatch(roots[domain] + suffix, path)) and method in {"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 
 def _validate_data(resource, data, updating=False):
-    immutable = {"PK", "SK", "entityType", "createdAt", "updatedAt", "createdBy", "cognitoUsername", "version"}
+    immutable = {"PK", "SK", "entityType", "createdAt", "updatedAt", "createdBy", "cognitoUsername", "version", "recordKind", "approvedBy", "approvedAt", "paidAmount"}
     if updating:
-        immutable |= {"orgId", "projectId", _id_field(resource)}
+        immutable |= {"orgId", "projectId", _id_field(resource), "storageKey"}
     if set(data) & immutable:
         raise ValueError("Request contains protected fields")
     if not updating and resource in {"organization", "project", "vendor", "inventory-item"}:
@@ -332,16 +333,22 @@ def _domain_handler(domain, event, context):
         pk, project_id = _pk(identity, path, resource, data, query)
         org_id = query.get("orgId") or data.get("orgId") or identity.organization_id
         record_id = _item_id(path, resource)
+        special = workflows.handle(identity, domain, resource, method, path, data, query, pk, project_id, org_id, record_id)
+        if special is not None:
+            return _response(200, {"success": True, "data": special})
+        workflows.validate(identity, resource, method, path, data)
         if resource == "attendance":
             _validate_data(resource, data)
             return _attendance(identity, table, pk, project_id, org_id, path, method)
         if method == "GET" and path in {"/dashboard/analytics", "/reports/executive"}:
             projects = _all_items(get_table("PROJECTS_TABLE"), KeyConditionExpression=Key("PK").eq(f"ORG#{org_id}") & Key("SK").begins_with("PROJECT#"))
             finance = _all_items(get_table("FINANCE_TABLE"), "scan", FilterExpression=Attr("orgId").eq(org_id))
+            projects = workflows.project_totals(projects, org_id)
             if path.endswith("analytics"):
+                approvals = workflows.approval_queue(org_id, finance)
                 result = {"totalProjects": len(projects), "activeProjects": sum(p.get("status") not in {"Completed", "Archived"} for p in projects),
                           "totalBudget": sum(p.get("budget", 0) for p in projects), "totalSpent": sum(p.get("spent", 0) for p in projects),
-                          "pendingApprovals": sum(f.get("status") == "Pending" for f in finance)}
+                          "pendingApprovals": len(approvals), "approvals": approvals}
             else:
                 result = {"projectSummaries": [_clean(p) for p in projects],
                           "totalExpenses": sum(f.get("amount", 0) for f in finance if f.get("entityType") == "expense"),
@@ -361,6 +368,10 @@ def _domain_handler(domain, event, context):
             else:
                 items = _all_items(table, KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with(f"{resource.upper()}#"))
                 items = [item for item in items if item.get("orgId") == org_id]
+            if resource == "material":
+                items = [i for i in items if workflows.material_kind(i) == path.split("/")[3]]
+            if resource == "project":
+                items = workflows.project_totals(items, org_id)
             if SUPERVISOR in identity.roles and resource == "project":
                 items = [p for p in items if identity.user_id in p.get("supervisorIds", [])]
             return _response(200, {"success": True, "data": [_clean(item) for item in items]})
@@ -380,10 +391,19 @@ def _domain_handler(domain, event, context):
             if record_id:
                 return _error(405, "METHOD_NOT_ALLOWED", "Create records using the collection URL")
             _validate_data(resource, data)
+            if resource in {"bill", "expense", "payment", "dpr"}:
+                data.setdefault("status", "Pending")
+            if resource == "material":
+                data["recordKind"] = path.split("/")[3]
+                data.setdefault("status", "pending")
             if resource == "project":
                 _validate_assignments(data, org_id)
+                if "supervisorIds" in data:
+                    data["supervisor"] = workflows.assignment_names(data["supervisorIds"], org_id)
             id_field = _id_field(resource)
-            record_id = data.get(id_field) or uuid.uuid4().hex
+            if data.get("requestId") and not workflows.re_id(str(data["requestId"])):
+                raise ValueError("Invalid requestId")
+            record_id = data.get(id_field) or data.get("requestId") or uuid.uuid4().hex
             if resource == "organization":
                 org_id = record_id
                 pk = f"ORG#{org_id}"
@@ -400,6 +420,12 @@ def _domain_handler(domain, event, context):
             if resource == "project":
                 item.setdefault("supervisorIds", [])
                 item.setdefault("spent", 0)
+            if data.get("requestId"):
+                prior = table.get_item(Key={"PK": pk, "SK": item["SK"]}, ConsistentRead=True).get("Item")
+                if prior:
+                    if any(prior.get(k) != v for k, v in data.items() if k != "status"):
+                        raise ValueError("Request ID already used for different data")
+                    return _response(200, {"success": True, "data": _clean(prior)})
             table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)")
             if resource == "organization" and data.get("adminEmail"):
                 admin_email = str(data["adminEmail"]).strip().lower()
@@ -414,6 +440,7 @@ def _domain_handler(domain, event, context):
                     resend_invitation(identity, admin_user)
                 except Exception as exc:
                     logging.exception("Failed to create admin user for organization %s: %s", org_id, exc)
+                    item["provisioningWarning"] = "Organization saved, but administrator setup failed. Create or resend the administrator invitation from Employees."
             return _response(201, {"success": True, "data": _clean(item)})
 
         if not record_id:
@@ -429,7 +456,11 @@ def _domain_handler(domain, event, context):
             raise AuthorizationError("Record is not in the selected organization")
         if SUPERVISOR in identity.roles and resource == "project" and identity.user_id not in existing.get("supervisorIds", []):
             raise AuthorizationError("You are not assigned to this project")
+        if resource == "material" and workflows.material_kind(existing) != path.split("/")[3]:
+            return _error(404, "NOT_FOUND", "Record not found in this collection")
         if method == "GET":
+            if resource == "project":
+                existing = workflows.project_totals([existing], org_id)[0]
             return _response(200, {"success": True, "data": _clean(existing)})
         if method == "DELETE":
             if resource in {"user", "organization", "project"}:
@@ -447,6 +478,12 @@ def _domain_handler(domain, event, context):
                     raise ValueError("Cannot suspend your own organization; use Active, Suspended or Archived")
             if resource == "project":
                 _validate_assignments(data, org_id)
+                if "supervisorIds" in data:
+                    data["supervisor"] = workflows.assignment_names(data["supervisorIds"], org_id)
+            workflows.validate_transition(identity, resource, existing, data)
+            if resource == "payment" and existing.get("billId") and data.get("status") == "Approved" and existing.get("status") != "Approved":
+                updated = workflows.approve_linked_payment(table, existing, data)
+                return _response(200, {"success": True, "data": _clean(updated)})
             previous_version = existing.get("version")
             existing.update(data)
             existing["updatedAt"] = datetime.now(timezone.utc).isoformat()
@@ -464,7 +501,7 @@ def _domain_handler(domain, event, context):
         return _error(400, "INVALID_REQUEST", str(exc))
     except ClientError as exc:
         code = exc.response["Error"]["Code"]
-        if code in {"ConditionalCheckFailedException", "UsernameExistsException"}:
+        if code in {"ConditionalCheckFailedException", "UsernameExistsException", "TransactionCanceledException"}:
             return _error(409, "CONFLICT", "The record already exists or was changed. Refresh and try again.")
         logging.exception("AWS operation failed")
         return _error(502, "SERVICE_ERROR", "The account or data service could not complete the operation")
