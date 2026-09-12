@@ -8,7 +8,8 @@ Parameters:
     Type: String
   FrontendOrigin:
     Type: String
-    Description: Exact frontend HTTPS origin (no trailing slash)
+    Default: '*'
+    Description: Exact frontend HTTPS origin (no trailing slash) or '*'
   OrganizationsTable:
     Type: String
     Default: kinetic-v2-organizations
