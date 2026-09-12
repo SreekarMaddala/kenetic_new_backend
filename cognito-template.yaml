@@ -17,11 +17,16 @@ Resources:
         AllowAdminCreateUserOnly: true
       Policies:
         PasswordPolicy:
-          MinimumLength: 8
+          MinimumLength: 12
           RequireUppercase: true
           RequireLowercase: true
           RequireNumbers: true
-          RequireSymbols: false
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
       Schema:
         - Name: name
           AttributeDataType: String
@@ -62,6 +67,16 @@ Resources:
       ClientName: kinetic-erp-web-client
       UserPoolId: !Ref KineticUserPool
       GenerateSecret: false
+      ReadAttributes: [email, email_verified, name, custom:org_id]
+      WriteAttributes: [name, email]
+      EnableTokenRevocation: true
+      IdTokenValidity: 15
+      AccessTokenValidity: 15
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        IdToken: minutes
+        AccessToken: minutes
+        RefreshToken: days
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH

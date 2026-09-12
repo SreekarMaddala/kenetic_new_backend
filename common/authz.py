@@ -53,6 +53,8 @@ def identity_from_event(event: Mapping[str, Any]) -> Identity:
     raw_roles = claims.get("cognito:groups", [])
     if isinstance(raw_roles, str):
         raw_roles = raw_roles.strip("[]").replace('"', "").split(",")
+    if not isinstance(raw_roles, (list, tuple)):
+        raise AuthorizationError("Invalid role claims")
     roles = frozenset(str(role).strip() for role in raw_roles if str(role).strip())
 
     if not user_id or not organization_id:
@@ -62,6 +64,8 @@ def identity_from_event(event: Mapping[str, Any]) -> Identity:
         raise AuthorizationError("Token contains an unsupported role")
     if not roles:
         raise AuthorizationError("Token does not include an application role")
+    if len(roles) != 1:
+        raise AuthorizationError("An account must have exactly one application role")
     return Identity(user_id=user_id, organization_id=organization_id, roles=roles)
 
 
@@ -74,3 +78,24 @@ def require_organization(identity: Identity, organization_id: str) -> None:
     if SUPER_ADMIN not in identity.roles and identity.organization_id != organization_id:
         raise AuthorizationError("You are not permitted to access this organization")
 
+
+def active_identity(event):
+    """Fail closed for disabled accounts, suspended tenants and stale role tokens."""
+    from common.dynamo import get_table
+
+    identity = identity_from_event(event)
+    profile = get_table("USERS_TABLE").get_item(
+        Key={"PK": f"ORG#{identity.organization_id}", "SK": f"USER#{identity.user_id}"},
+        ConsistentRead=True,
+    ).get("Item")
+    if (not profile or profile.get("status") != "Active"
+            or profile.get("orgId") != identity.organization_id
+            or profile.get("role") not in identity.roles):
+        raise AuthorizationError("Your account is inactive or its permissions have changed. Sign in again or contact your administrator.")
+    organization = get_table("ORGANIZATIONS_TABLE").get_item(
+        Key={"PK": f"ORG#{identity.organization_id}", "SK": f"ORGANIZATION#{identity.organization_id}"},
+        ConsistentRead=True,
+    ).get("Item")
+    if not organization or organization.get("status") != "Active":
+        raise AuthorizationError("Your organization is inactive")
+    return identity

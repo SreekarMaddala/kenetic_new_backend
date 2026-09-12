@@ -14,7 +14,7 @@ domain, not by individual CRUD operation.
 
 | Lambda | Routes/features |
 |---|---|
-| auth | account confirmation and invitation acceptance |
+| auth | authenticated session status; Cognito handles password challenges |
 | platform-admin | organizations, users, metrics |
 | projects | projects and milestones |
 | project-commercial | BOQ and subcontractors |
@@ -33,14 +33,14 @@ domain, not by individual CRUD operation.
 |---|---|
 | organizations | `ORG#{orgId}` |
 | users | `ORG#{orgId}` / `USER#{userId}` |
-| projects | `ORG#{orgId}` / `PROJECT#{projectId}` and `PROJECT#{projectId}` child items |
+| projects | `ORG#{orgId}` / `PROJECT#{projectId}` and `ORG#{orgId}#PROJECT#{projectId}` child items |
 | parties | `ORG#{orgId}` / vendor or subcontractor item |
-| field-operations | `PROJECT#{projectId}` / dated attendance and DPR items |
-| site-control | `PROJECT#{projectId}` / issue, inspection, equipment items |
-| materials-logistics | `PROJECT#{projectId}` / material or trip item |
-| document-control | `PROJECT#{projectId}` / drawing or document item |
+| field-operations | `ORG#{orgId}#PROJECT#{projectId}` / dated attendance and DPR items |
+| site-control | `ORG#{orgId}#PROJECT#{projectId}` / issue, inspection, equipment items |
+| materials-logistics | `ORG#{orgId}#PROJECT#{projectId}` / material or trip item |
+| document-control | `ORG#{orgId}#PROJECT#{projectId}` / drawing or document item |
 | inventory | `ORG#{orgId}` / stock and warehouse-event item |
-| finance | `ORG#{orgId}` or `PROJECT#{projectId}` / financial item |
+| finance | `ORG#{orgId}` or `ORG#{orgId}#PROJECT#{projectId}` / financial item |
 | settings | `ORG#{orgId}` / setting item |
 | audit-events | `ORG#{orgId}` / timestamped immutable event |
 
@@ -55,3 +55,5 @@ queries (approval queues, project timelines, user attendance, and payments).
 3. Backfill one table/domain at a time with idempotent migration jobs.
 4. Reconcile counts and financial totals, then switch API routes by domain.
 5. Keep legacy tables read-only for the rollback window; delete only after sign-off.
+
+See [ACCESS_SETUP.md](ACCESS_SETUP.md) for the implemented role model, bootstrap and additive child-partition migration.
