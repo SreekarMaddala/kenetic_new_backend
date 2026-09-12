@@ -135,6 +135,24 @@ Resources:
             Method: ANY
             Auth:
               Authorizer: CognitoJwt
+        OptionsAuthRoute:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /auth/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        OptionsGlobalRoute:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   PlatformAdminFunction:
     Type: AWS::Serverless::Function
     Properties:
