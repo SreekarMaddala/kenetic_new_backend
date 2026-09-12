@@ -61,7 +61,7 @@ def bootstrap(args):
             client.admin_delete_user(UserPoolId=args.pool_id, Username=username)
         raise
     if args.send_invitation:
-        client.admin_create_user(UserPoolId=args.pool_id, Username=username, MessageAction="RESEND", DesiredDeliveryMediums=["EMAIL"])
+        client.admin_create_user(UserPoolId=args.pool_id, Username=args.email, MessageAction="RESEND", DesiredDeliveryMediums=["EMAIL"])
         users.update_item(Key=key, UpdateExpression="SET invitationStatus = :sent", ExpressionAttributeValues={":sent": "Sent"})
     print(f"Provisioned {args.role} in organization {args.org_id}. No password was printed or stored by this script.")
 

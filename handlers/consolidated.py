@@ -71,7 +71,13 @@ ID_FIELDS = {
 def _response(status, payload):
     return {
         "statusCode": status,
-        "headers": {"Content-Type": "application/json", "Cache-Control": "no-store"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        },
         "body": json.dumps(payload, default=lambda value: int(value) if isinstance(value, Decimal) and value == value.to_integral_value() else float(value) if isinstance(value, Decimal) else str(value)),
     }
 
@@ -292,6 +298,10 @@ def _attendance(identity, table, pk, project_id, org_id, path, method):
 
 def _domain_handler(domain, event, context):
     try:
+        http = event.get("requestContext", {}).get("http", {})
+        method = (http.get("method") or event.get("httpMethod") or "GET").upper()
+        if method == "OPTIONS":
+            return _response(200, {"success": True})
         identity = active_identity(event)
         require_role(identity, *DOMAIN_CONFIG[domain][1])
         method, path, data = _event_parts(event)
@@ -441,6 +451,10 @@ def _domain_handler(domain, event, context):
 
 def auth_handler(event, context):
     try:
+        http = event.get("requestContext", {}).get("http", {})
+        method = (http.get("method") or event.get("httpMethod") or "GET").upper()
+        if method == "OPTIONS":
+            return _response(200, {"success": True})
         identity = active_identity(event)
         method, path, _ = _event_parts(event)
         if method == "GET" and path == "/auth/me":

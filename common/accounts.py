@@ -62,7 +62,7 @@ def resend_invitation(identity, item):
         raise ValueError("Enable the account before sending an invitation")
     client = boto3.client("cognito-idp")
     client.admin_create_user(UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
-                            Username=item["cognitoUsername"], MessageAction="RESEND",
+                            Username=item["email"], MessageAction="RESEND",
                             DesiredDeliveryMediums=["EMAIL"])
     result = get_table("USERS_TABLE").update_item(
         Key={"PK": item["PK"], "SK": item["SK"]},
