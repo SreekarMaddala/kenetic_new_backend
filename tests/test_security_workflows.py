@@ -126,7 +126,7 @@ def test_admin_creates_only_supervisors_and_cognito_invitation_is_explicit(cogni
     account = data(api.platform_admin_handler(event("/employees", "POST", body), None))
     assert account["employeeId"] == "new-sub"
     assert "cognitoUsername" not in account
-    assert cognito.admin_create_user.call_args.kwargs["MessageAction"] == "SUPPRESS"
+    assert cognito.admin_create_user.call_args.kwargs["DesiredDeliveryMediums"] == ["EMAIL"]
     assert {"Name": "custom:org_id", "Value": "ORG-A"} in cognito.admin_create_user.call_args.kwargs["UserAttributes"]
     cognito.admin_add_user_to_group.assert_called_once_with(UserPoolId="us-east-1_test", Username="new-user", GroupName=SUPERVISOR)
     data(api.platform_admin_handler(event("/employees/new-sub/invitation", "POST"), None))

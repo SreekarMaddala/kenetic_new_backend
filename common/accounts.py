@@ -31,9 +31,9 @@ def create_account(identity, data):
         raise ValueError("A name and valid email address are required")
     client = boto3.client("cognito-idp")
     pool_id = os.environ["COGNITO_USER_POOL_ID"]
-    # Suppress delivery until group and database provisioning have succeeded.
+    # Deliver Cognito welcome email automatically with temporary credentials.
     result = client.admin_create_user(
-        UserPoolId=pool_id, Username=email, MessageAction="SUPPRESS",
+        UserPoolId=pool_id, Username=email, DesiredDeliveryMediums=["EMAIL"],
         UserAttributes=[{"Name": "email", "Value": email}, {"Name": "name", "Value": name},
                         {"Name": "email_verified", "Value": "true"}, {"Name": "custom:org_id", "Value": org_id}],
     )["User"]

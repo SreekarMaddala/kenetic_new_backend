@@ -15,6 +15,9 @@ Resources:
         - email
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: "Welcome to Kinetic ERP — Your Account Invitation"
+          EmailMessage: "Welcome to Kinetic ERP! Your account has been created. Your username is {username} and your temporary password is {####}. Please sign in to activate your account."
       Policies:
         PasswordPolicy:
           MinimumLength: 12
