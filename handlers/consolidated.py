@@ -142,7 +142,7 @@ def _item_id(path, resource):
         "project": "projects", "organization": "organizations", "user": "employees",
         "vendor": "vendors", "inventory-item": "inventory", "payment": "payments",
         "boq": "boq", "subcontractor": "subcontractors", "drawing": "drawings",
-        "document": "documents", "bill": "bills", "expense": "expenses",
+        "milestone": "milestones", "document": "documents", "bill": "bills", "expense": "expenses",
         "issue": "issues", "inspection": "inspections", "equipment": "equipment",
         "payroll": "payroll", "dpr": "dpr",
     }
@@ -216,7 +216,7 @@ def _check_route(domain, path, method):
     roots = {
         "platform-admin": r"/(?:super-admin/(?:organizations|employees)|employees)",
         "projects": r"/projects",
-        "project-commercial": r"/projects/[^/]+/(?:boq|subcontractors)",
+        "project-commercial": r"/projects/[^/]+/(?:boq|milestones|subcontractors)",
         "workforce": r"/supervisor/(?:attendance/(?:check-in|check-out|history)|labour/attendance)",
         "field-operations": r"/supervisor/(?:dpr|materials/(?:grn|indents|stock)|logistics/trips)",
         "site-control": r"/projects/[^/]+/(?:issues|inspections|equipment)",

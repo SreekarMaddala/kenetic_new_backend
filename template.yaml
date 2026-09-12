@@ -274,6 +274,20 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/subcontractors/{proxy+}
             Method: ANY
+        MilestonesRoot:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones
+            Method: ANY
+        Milestones:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones/{proxy+}
+            Method: ANY
   WorkforceFunction:
     Type: AWS::Serverless::Function
     Properties:
