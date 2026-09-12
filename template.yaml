@@ -195,6 +195,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /super-admin/{proxy+}
             Method: ANY
+        RoutesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /super-admin/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         EmployeesRoot:
           Type: HttpApi
           Properties:
@@ -202,6 +211,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /employees
             Method: ANY
+        EmployeesRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Employees:
           Type: HttpApi
           Properties:
@@ -209,6 +227,47 @@ Resources:
               Ref: KineticHttpApi
             Path: /employees/{proxy+}
             Method: ANY
+        EmployeesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        OrganizationsRoot:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations
+            Method: ANY
+        OrganizationsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        Organizations:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations/{proxy+}
+            Method: ANY
+        OrganizationsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   ProjectsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -237,6 +296,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects
             Method: ANY
+        RootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Routes:
           Type: HttpApi
           Properties:
@@ -244,6 +312,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{proxy+}
             Method: ANY
+        RoutesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   ProjectCommercialFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -272,6 +349,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/boq
             Method: ANY
+        BoqRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Boq:
           Type: HttpApi
           Properties:
@@ -279,6 +365,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/boq/{proxy+}
             Method: ANY
+        BoqOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         SubcontractorsRoot:
           Type: HttpApi
           Properties:
@@ -286,6 +381,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/subcontractors
             Method: ANY
+        SubcontractorsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Subcontractors:
           Type: HttpApi
           Properties:
@@ -293,6 +397,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/subcontractors/{proxy+}
             Method: ANY
+        SubcontractorsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         MilestonesRoot:
           Type: HttpApi
           Properties:
@@ -300,6 +413,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/milestones
             Method: ANY
+        MilestonesRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Milestones:
           Type: HttpApi
           Properties:
@@ -307,6 +429,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/milestones/{proxy+}
             Method: ANY
+        MilestonesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   WorkforceFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -332,6 +463,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /supervisor/attendance/{proxy+}
             Method: ANY
+        AttendanceOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/attendance/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Labour:
           Type: HttpApi
           Properties:
@@ -339,6 +479,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /supervisor/labour/{proxy+}
             Method: ANY
+        LabourOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/labour/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   FieldOperationsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -367,6 +516,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /supervisor/{proxy+}
             Method: ANY
+        RoutesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   SiteControlFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -392,6 +550,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/issues
             Method: ANY
+        IssuesRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Issues:
           Type: HttpApi
           Properties:
@@ -399,6 +566,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/issues/{proxy+}
             Method: ANY
+        IssuesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         InspectionsRoot:
           Type: HttpApi
           Properties:
@@ -406,6 +582,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/inspections
             Method: ANY
+        InspectionsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Inspections:
           Type: HttpApi
           Properties:
@@ -413,6 +598,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/inspections/{proxy+}
             Method: ANY
+        InspectionsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         EquipmentRoot:
           Type: HttpApi
           Properties:
@@ -420,6 +614,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/equipment
             Method: ANY
+        EquipmentRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Equipment:
           Type: HttpApi
           Properties:
@@ -427,6 +630,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/equipment/{proxy+}
             Method: ANY
+        EquipmentOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   DocumentControlFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -452,6 +664,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/drawings
             Method: ANY
+        DrawingsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Drawings:
           Type: HttpApi
           Properties:
@@ -459,6 +680,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/drawings/{proxy+}
             Method: ANY
+        DrawingsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         DocumentsRoot:
           Type: HttpApi
           Properties:
@@ -466,6 +696,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/documents
             Method: ANY
+        DocumentsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Documents:
           Type: HttpApi
           Properties:
@@ -473,6 +712,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/documents/{proxy+}
             Method: ANY
+        DocumentsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   SupplyChainFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -501,6 +749,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /vendors
             Method: ANY
+        VendorsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Vendors:
           Type: HttpApi
           Properties:
@@ -508,6 +765,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /vendors/{proxy+}
             Method: ANY
+        VendorsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         InventoryRoot:
           Type: HttpApi
           Properties:
@@ -515,6 +781,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /inventory
             Method: ANY
+        InventoryRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Inventory:
           Type: HttpApi
           Properties:
@@ -522,6 +797,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /inventory/{proxy+}
             Method: ANY
+        InventoryOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Warehouse:
           Type: HttpApi
           Properties:
@@ -529,6 +813,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /warehouse/{proxy+}
             Method: ANY
+        WarehouseOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /warehouse/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   FinanceFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -554,6 +847,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /payments
             Method: ANY
+        PaymentsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Payments:
           Type: HttpApi
           Properties:
@@ -561,6 +863,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /payments/{proxy+}
             Method: ANY
+        PaymentsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         ProjectPaymentsRoot:
           Type: HttpApi
           Properties:
@@ -568,6 +879,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payments
             Method: ANY
+        ProjectPaymentsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         ProjectPayments:
           Type: HttpApi
           Properties:
@@ -575,6 +895,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payments/{proxy+}
             Method: ANY
+        ProjectPaymentsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         BillsRoot:
           Type: HttpApi
           Properties:
@@ -582,6 +911,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/bills
             Method: ANY
+        BillsRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Bills:
           Type: HttpApi
           Properties:
@@ -589,6 +927,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/bills/{proxy+}
             Method: ANY
+        BillsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         ExpensesRoot:
           Type: HttpApi
           Properties:
@@ -596,6 +943,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/expenses
             Method: ANY
+        ExpensesRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Expenses:
           Type: HttpApi
           Properties:
@@ -603,6 +959,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/expenses/{proxy+}
             Method: ANY
+        ExpensesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   GovernanceFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -631,6 +996,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payroll
             Method: ANY
+        PayrollRootOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payroll
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         PayrollRoutes:
           Type: HttpApi
           Properties:
@@ -638,6 +1012,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payroll/{proxy+}
             Method: ANY
+        PayrollRoutesOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payroll/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Dashboard:
           Type: HttpApi
           Properties:
@@ -645,6 +1028,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /dashboard/{proxy+}
             Method: ANY
+        DashboardOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /dashboard/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Reports:
           Type: HttpApi
           Properties:
@@ -652,6 +1044,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /reports/{proxy+}
             Method: ANY
+        ReportsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /reports/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         Settings:
           Type: HttpApi
           Properties:
@@ -659,6 +1060,15 @@ Resources:
               Ref: KineticHttpApi
             Path: /settings
             Method: ANY
+        SettingsOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /settings
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
   MaintenanceJobsFunction:
     Type: AWS::Serverless::Function
     Properties:

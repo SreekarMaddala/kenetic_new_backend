@@ -15,7 +15,7 @@ def create_account(identity, data):
     if set(data) - allowed:
         raise ValueError("Unsupported account fields")
     role = data.get("role")
-    allowed_roles = {OPERATIONS_ADMIN, SUPERVISOR} if SUPER_ADMIN in identity.roles else {SUPERVISOR}
+    allowed_roles = {OPERATIONS_ADMIN} if SUPER_ADMIN in identity.roles else {SUPERVISOR}
     if not identity.has_any_role({SUPER_ADMIN, OPERATIONS_ADMIN}) or role not in allowed_roles:
         raise AuthorizationError("You cannot create an account with this role")
     org_id = data.get("orgId") or identity.organization_id

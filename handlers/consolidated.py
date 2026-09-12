@@ -90,6 +90,11 @@ def _event_parts(event):
     http = event.get("requestContext", {}).get("http", {})
     method = (http.get("method") or event.get("httpMethod") or "GET").upper()
     path = event.get("rawPath") or event.get("path") or ""
+    stage = event.get("requestContext", {}).get("stage") or ""
+    if stage and path.startswith(f"/{stage}"):
+        path = path[len(stage) + 1:]
+    if not path.startswith("/"):
+        path = "/" + path
     body = event.get("body") or "{}"
     try:
         data = json.loads(body) if isinstance(body, str) else body
@@ -155,10 +160,16 @@ def _item_id(path, resource):
     marker = resource_markers.get(resource)
     if marker:
         index = 2 if segments[0] == "projects" and resource != "project" else 1 if segments[0] in {"super-admin", "supervisor"} else 0
-        if index >= len(segments) or segments[index] != marker:
-            return None
-        if index + 1 < len(segments):
+        if index < len(segments) and segments[index] == marker and index + 1 < len(segments):
             return segments[index + 1]
+    if resource == "material" and len(segments) >= 4 and segments[0] == "supervisor" and segments[1] == "materials" and segments[2] in {"grn", "indents", "stock"}:
+        return segments[3]
+    if resource == "logistics-trip" and len(segments) >= 4 and segments[0] == "supervisor" and segments[1] == "logistics" and segments[2] == "trips":
+        return segments[3]
+    if resource == "labour-attendance" and len(segments) >= 4 and segments[0] == "supervisor" and segments[1] == "labour" and segments[2] == "attendance":
+        return segments[3]
+    if resource == "warehouse-event" and len(segments) >= 3 and segments[0] == "warehouse" and segments[1] in {"grn", "issue-vouchers"}:
+        return segments[2]
     return None
 
 
@@ -390,6 +401,19 @@ def _domain_handler(domain, event, context):
                 item.setdefault("supervisorIds", [])
                 item.setdefault("spent", 0)
             table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)")
+            if resource == "organization" and data.get("adminEmail"):
+                admin_email = str(data["adminEmail"]).strip().lower()
+                admin_name = str(data.get("adminName") or f"{item['name']} Admin").strip()
+                try:
+                    admin_user = create_account(identity, {
+                        "name": admin_name,
+                        "email": admin_email,
+                        "role": OPERATIONS_ADMIN,
+                        "orgId": org_id,
+                    })
+                    resend_invitation(identity, admin_user)
+                except Exception as exc:
+                    logging.exception("Failed to create admin user for organization %s: %s", org_id, exc)
             return _response(201, {"success": True, "data": _clean(item)})
 
         if not record_id:
