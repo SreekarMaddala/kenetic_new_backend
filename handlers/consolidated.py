@@ -341,9 +341,10 @@ def _domain_handler(domain, event, context):
             _validate_data(resource, data)
             return _attendance(identity, table, pk, project_id, org_id, path, method)
         if method == "GET" and path in {"/dashboard/analytics", "/reports/executive"}:
+            period = workflows.report_period(query) if path == "/reports/executive" else None
             projects = _all_items(get_table("PROJECTS_TABLE"), KeyConditionExpression=Key("PK").eq(f"ORG#{org_id}") & Key("SK").begins_with("PROJECT#"))
             finance = _all_items(get_table("FINANCE_TABLE"), "scan", FilterExpression=Attr("orgId").eq(org_id))
-            projects = workflows.project_totals(projects, org_id)
+            projects = workflows.project_totals(projects, org_id, period)
             if path.endswith("analytics"):
                 approvals = workflows.approval_queue(org_id, finance)
                 result = {"totalProjects": len(projects), "activeProjects": sum(p.get("status") not in {"Completed", "Archived"} for p in projects),
@@ -351,7 +352,7 @@ def _domain_handler(domain, event, context):
                           "pendingApprovals": len(approvals), "approvals": approvals}
             else:
                 result = {"projectSummaries": [_clean(p) for p in projects],
-                          "totalExpenses": sum(f.get("amount", 0) for f in finance if f.get("entityType") == "expense"),
+                          "totalExpenses": sum(f.get("amount", 0) for f in finance if f.get("entityType") == "expense" and workflows.in_report_period(f, period)),
                           "generatedAt": datetime.now(timezone.utc).isoformat()}
             return _response(200, {"success": True, "data": result})
         if method == "GET" and path == "/super-admin/metrics":

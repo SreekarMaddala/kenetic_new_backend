@@ -121,21 +121,43 @@ def validate_transition(identity, resource, old, body):
         raise ValueError("Approved records are immutable")
 
 
-def project_totals(projects, org):
+def report_period(query):
+    start, end = query.get("startDate"), query.get("endDate")
+    if not start and not end:
+        return None
+    if not start or not end:
+        raise ValueError("Choose both a start and end date")
+    if len(start) != 10 or len(end) != 10 or date.fromisoformat(start) > date.fromisoformat(end):
+        raise ValueError("Choose a valid date range with start date before end date")
+    return start, end
+
+
+def in_report_period(item, period):
+    if period is None:
+        return True
+    stamp = str(item.get("date") or item.get("paidAt") or item.get("approvedAt") or item.get("createdAt") or "")[:10]
+    return period[0] <= stamp <= period[1]
+
+
+def project_totals(projects, org, period=None):
     # Preserve explicit historical opening spending, then add posted transactions.
     finance = rows(get_table("FINANCE_TABLE"), org=org)
     payroll = rows(get_table("SETTINGS_TABLE"), org=org)
     daily_wages = [r for r in rows(get_table("FIELD_OPERATIONS_TABLE"), org=org) if r.get("entityType") == "daily-wage" and r.get("paymentStatus") == "Paid"]
     totals = {}
     for item in finance + payroll:
+        if not in_report_period(item, period):
+            continue
         kind, status = item.get("entityType"), str(item.get("status", "")).lower()
         if (kind in {"expense", "payment"} and status == "approved") or (kind == "payroll" and status == "paid"):
             pid = item.get("projectId")
             totals[pid] = totals.get(pid, 0) + item.get("amount", 0)
     for item in daily_wages:
+        if not in_report_period(item, period):
+            continue
         pid = item["projectId"]
         totals[pid] = totals.get(pid, 0) + item.get("wage", 0)
-    return [dict(p, spent=p.get("openingSpent", p.get("spent", 0)) + totals.get(p["projectId"], 0)) for p in projects]
+    return [dict(p, spent=(p.get("openingSpent", p.get("spent", 0)) if period is None else 0) + totals.get(p["projectId"], 0)) for p in projects]
 
 
 def approval_queue(org, finance):
