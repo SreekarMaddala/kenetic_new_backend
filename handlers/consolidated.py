@@ -371,6 +371,8 @@ def _domain_handler(domain, event, context):
                 items = [item for item in items if item.get("orgId") == org_id]
             if resource == "material":
                 items = [i for i in items if workflows.material_kind(i) == path.split("/")[3]]
+            if resource == "logistics-trip":
+                items = [i for i in items if workflows.logistics_visible(identity, i)]
             if resource == "project":
                 items = workflows.project_totals(items, org_id)
             if SUPERVISOR in identity.roles and resource == "project":
@@ -455,6 +457,11 @@ def _domain_handler(domain, event, context):
         require_organization(identity, existing.get("orgId", ""))
         if existing.get("orgId") != org_id and resource != "organization":
             raise AuthorizationError("Record is not in the selected organization")
+        if resource == "logistics-trip":
+            if not workflows.logistics_visible(identity, existing):
+                raise AuthorizationError("Supervisors can only access logistics for the current month")
+            if existing.get("tripType") == "vehicle_registration" and method != "GET":
+                require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         if SUPERVISOR in identity.roles and resource == "project" and identity.user_id not in existing.get("supervisorIds", []):
             raise AuthorizationError("You are not assigned to this project")
         if resource == "material" and workflows.material_kind(existing) != path.split("/")[3]:

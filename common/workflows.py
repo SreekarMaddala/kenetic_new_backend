@@ -2,7 +2,7 @@
 import os
 import uuid
 import hashlib
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -12,6 +12,16 @@ from common.authz import SUPERVISOR, OPERATIONS_ADMIN, SUPER_ADMIN, require_role
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def logistics_month():
+    return datetime.fromisoformat(now()).astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m")
+
+
+def logistics_visible(identity, item):
+    if SUPERVISOR not in identity.roles or item.get("tripType") == "vehicle_registration":
+        return True
+    return str(item.get("date", ""))[:7] == logistics_month()
 
 
 def rows(table, pk=None, prefix=None, org=None):
@@ -61,6 +71,13 @@ def validate(identity, resource, method, path, body):
             raise ValueError("Progress must not exceed 100")
     if resource == "logistics-trip":
         kind = body.get("tripType")
+        if kind != "vehicle_registration":
+            day = str(body.get("date", ""))
+            if len(day) != 10:
+                raise ValueError("A valid logistics date is required")
+            date.fromisoformat(day)
+            if not logistics_visible(identity, body):
+                raise AuthorizationError("Supervisors can only record logistics for the current month")
         if kind == "vehicle_registration":
             require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
             if not str(body.get("vehicle", "")).strip():
