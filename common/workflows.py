@@ -125,12 +125,16 @@ def project_totals(projects, org):
     # Preserve explicit historical opening spending, then add posted transactions.
     finance = rows(get_table("FINANCE_TABLE"), org=org)
     payroll = rows(get_table("SETTINGS_TABLE"), org=org)
+    daily_wages = [r for r in rows(get_table("FIELD_OPERATIONS_TABLE"), org=org) if r.get("entityType") == "daily-wage" and r.get("paymentStatus") == "Paid"]
     totals = {}
     for item in finance + payroll:
         kind, status = item.get("entityType"), str(item.get("status", "")).lower()
         if (kind in {"expense", "payment"} and status == "approved") or (kind == "payroll" and status == "paid"):
             pid = item.get("projectId")
             totals[pid] = totals.get(pid, 0) + item.get("amount", 0)
+    for item in daily_wages:
+        pid = item["projectId"]
+        totals[pid] = totals.get(pid, 0) + item.get("wage", 0)
     return [dict(p, spent=p.get("openingSpent", p.get("spent", 0)) + totals.get(p["projectId"], 0)) for p in projects]
 
 
@@ -169,9 +173,11 @@ def approve_linked_payment(table, existing, body):
     return updated
 
 
-def labour_list(table, pk, day):
+def labour_list(table, pk, day, roster=False):
     date.fromisoformat(day)
-    workers = rows(table, pk, "LABOUR-ATTENDANCE#")
+    org, pid = pk.removeprefix("ORG#").split("#PROJECT#", 1)
+    workers = [w for w in rows(table, org=org) if w.get("entityType") == "worker"]
+    allocations = rows(table, f"ORG#{org}", "ALLOCATION#")
     daily = rows(table, pk, "DAILY#")
     debits = rows(table, pk, "DEBIT#")
     result = []
@@ -179,8 +185,21 @@ def labour_list(table, pk, day):
         wid = w["labourAttendanceId"]
         logs = [r for r in daily if r["labourId"] == wid and r["date"].startswith(day[:7])]
         current = next((r for r in logs if r["date"] == day), {})
+        history = sorted([a for a in allocations if a["labourId"] == wid and a["date"] <= day], key=lambda a: a["date"])
+        allocation = history[-1] if history else {}
+        allocated_project = allocation.get("projectId", w["projectId"])
+        if not roster and allocated_project != pid and not logs:
+            continue
         deductions = [r for r in debits if r["labourId"] == wid and r["date"].startswith(day[:7])]
+        gross = sum(r.get("wage", w["rate"] * ({"Present": 1, "Half Day": Decimal("0.5")}.get(r["status"], 0) + bool(r.get("nightShift")))) for r in logs)
+        paid = sum(r.get("wage", 0) for r in logs if r.get("paymentStatus") == "Paid")
         result.append(dict(clean(w), status=current.get("status", "Absent"), nightShift=current.get("nightShift", False),
+                           attendanceRecorded=bool(current), paymentStatus=current.get("paymentStatus", "Not paid"),
+                           allocatedProjectId=allocated_project, allocationDate=allocation.get("date"),
+                           allocationConfirmed=allocation.get("date") == day and allocated_project == pid,
+                           allocationStarted=allocation.get("date") == day and allocation.get("attendanceStarted", False),
+                           dailyWage=current.get("wage", w["rate"] if current.get("status") == "Present" else 0),
+                           grossWages=gross, dailyPaid=paid, unpaidWages=max(0, gross - paid),
                            date=day, daysPresent=sum({"Present": 1, "Half Day": Decimal("0.5")}.get(r["status"], 0) for r in logs),
                            nightShifts=sum(bool(r.get("nightShift")) for r in logs),
                            advanceDeductions=sum(r["amount"] for r in deductions), deductions=[clean(r) for r in deductions]))
@@ -192,7 +211,13 @@ def labour(identity, method, body, query, pk, org, pid):
     day = str(body.get("date") or query.get("date") or now()[:10])
     date.fromisoformat(day)
     if method == "GET":
-        return labour_list(table, pk, day)
+        roster = query.get("roster") == "true"
+        if roster:
+            require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+        result = labour_list(table, pk, day, roster)
+        if SUPERVISOR in identity.roles:
+            result = [w for w in result if w["allocatedProjectId"] == pid]
+        return result
     if method != "POST":
         raise ValueError("Use dated attendance submissions")
     from handlers.consolidated import _validate_data
@@ -211,8 +236,30 @@ def labour(identity, method, body, query, pk, org, pid):
                 "projectId": pid, "createdAt": now(), "createdBy": identity.user_id}
         table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK)")
         return clean(item)
+    if not worker:
+        worker = next((w for w in rows(table, org=org) if w.get("entityType") == "worker" and w.get("labourAttendanceId") == wid), None)
     if not worker or worker.get("orgId") != org:
-        raise ValueError("Worker does not exist in this project")
+        raise ValueError("Worker does not exist in this organization")
+    allocation_key = {"PK": f"ORG#{org}", "SK": f"ALLOCATION#{wid}#{day}"}
+    if operation == "allocate":
+        require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+        target = str(body.get("targetProjectId") or pid)
+        project = get_table("PROJECTS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"PROJECT#{target}"}, ConsistentRead=True).get("Item")
+        if not project or project.get("orgId") != org:
+            raise AuthorizationError("Choose a project in this organization")
+        target_pk = f"ORG#{org}#PROJECT#{target}"
+        previous_logs = [r for r in rows(table, org=org) if r.get("labourId") == wid and r.get("date") == day and r.get("SK", "").startswith("DAILY#")]
+        if any(r.get("projectId") != target for r in previous_logs):
+            raise ValueError("This worker already has attendance at another project for this date")
+        item = {**allocation_key, "entityType": "worker-allocation", "labourId": wid, "projectId": target,
+                "orgId": org, "date": day, "confirmedBy": identity.user_id, "confirmedAt": now()}
+        if previous_logs:
+            item["attendanceStarted"] = True
+        table.meta.client.transact_write_items(TransactItems=[
+            {"ConditionCheck": {"TableName": get_table("SETTINGS_TABLE").name, "Key": {"PK": target_pk, "SK": f"PAYROLL#{day[:7]}"}, "ConditionExpression": "attribute_not_exists(PK)"}},
+            {"Put": {"TableName": table.name, "Item": item, "ConditionExpression": "attribute_not_exists(attendanceStarted)"}},
+        ])
+        return clean(item)
     cycle = get_table("SETTINGS_TABLE").get_item(Key={"PK": pk, "SK": f"PAYROLL#{day[:7]}"}, ConsistentRead=True).get("Item")
     if cycle:
         raise ValueError("Attendance and deductions are locked after the payroll cycle is generated")
@@ -229,13 +276,26 @@ def labour(identity, method, body, query, pk, org, pid):
             {"Update": {"TableName": table.name, "Key": {"PK": pk, "SK": f"MONTH#{day[:7]}"}, "UpdateExpression": "ADD revision :one", "ExpressionAttributeValues": {":one": 1}}},
         ])
         return clean(item)
-    if operation != "attendance" or body.get("status") not in {"Present", "Absent", "Half Day"}:
-        raise ValueError("Select a valid attendance status")
-    if body["status"] == "Absent" and body.get("nightShift"):
-        raise ValueError("An absent worker cannot have a night shift")
+    if operation != "attendance" or body.get("status") not in {"Present", "Absent"}:
+        raise ValueError("Select Present or Absent")
+    if body.get("nightShift"):
+        raise ValueError("Night shifts are no longer part of daily attendance")
+    payment_status = body.get("paymentStatus", "Not paid")
+    if payment_status not in {"Paid", "Not paid"}:
+        raise ValueError("Select Paid or Not paid")
+    if body["status"] == "Absent" and payment_status == "Paid":
+        raise ValueError("An absent worker has no daily wage to mark paid")
+    allocation = table.get_item(Key=allocation_key, ConsistentRead=True).get("Item")
+    if not allocation or allocation.get("projectId") != pid:
+        raise AuthorizationError("The admin must confirm this worker's project allocation for this date first")
+    existing = table.get_item(Key={"PK": pk, "SK": f"DAILY#{wid}#{day}"}, ConsistentRead=True).get("Item", {})
+    rate = existing.get("rate", worker["rate"])
     item = {"PK": pk, "SK": f"DAILY#{wid}#{day}", "labourId": wid, "date": day, "status": body["status"],
-            "nightShift": bool(body.get("nightShift", False)), "orgId": org, "projectId": pid, "updatedAt": now(), "createdBy": identity.user_id}
+            "entityType": "daily-wage", "paymentStatus": payment_status, "rate": rate,
+            "wage": rate if body["status"] == "Present" else 0,
+            "nightShift": False, "orgId": org, "projectId": pid, "updatedAt": now(), "createdBy": identity.user_id}
     table.meta.client.transact_write_items(TransactItems=[
+        {"Update": {"TableName": table.name, "Key": allocation_key, "UpdateExpression": "SET attendanceStarted = :yes", "ConditionExpression": "projectId = :pid", "ExpressionAttributeValues": {":yes": True, ":pid": pid}}},
         {"ConditionCheck": {"TableName": get_table("SETTINGS_TABLE").name, "Key": {"PK": pk, "SK": f"PAYROLL#{day[:7]}"}, "ConditionExpression": "attribute_not_exists(PK)"}},
         {"Put": {"TableName": table.name, "Item": item}},
         {"Update": {"TableName": table.name, "Key": {"PK": pk, "SK": f"MONTH#{day[:7]}"}, "UpdateExpression": "ADD revision :one", "ExpressionAttributeValues": {":one": 1}}},
@@ -385,11 +445,11 @@ def payroll(identity, method, path, body, pk, pid, org):
     workers = labour_list(workforce, pk, month + "-01")
     staff = []
     for w in workers:
-        gross = w["rate"] * (w["daysPresent"] + w["nightShifts"])
-        if w["advanceDeductions"] > gross:
+        gross = w["grossWages"]
+        if w["advanceDeductions"] + w["dailyPaid"] > gross:
             raise ValueError(f"Deductions exceed wages for {w['name']}; correct deductions before generating payroll")
         staff.append({"labourId": w["labourAttendanceId"], "name": w["name"], "rate": w["rate"], "daysPresent": w["daysPresent"],
-                      "nightShifts": w["nightShifts"], "gross": gross, "deductions": w["advanceDeductions"], "net": gross - w["advanceDeductions"]})
+                      "nightShifts": w["nightShifts"], "gross": gross, "deductions": w["advanceDeductions"], "dailyPaid": w["dailyPaid"], "net": gross - w["advanceDeductions"] - w["dailyPaid"]})
     for profile in rows(table, pk, "SALARY#"):
         employee = get_table("USERS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"USER#{profile['employeeId']}"}, ConsistentRead=True).get("Item")
         if not employee or employee.get("status") != "Active":

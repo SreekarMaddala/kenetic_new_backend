@@ -33,12 +33,14 @@ def test_daily_attendance_is_idempotent_and_monthly_deductions_persist():
     worker = data(call(api.workforce_handler, path, "POST", {"projectId": "P-A", "name": "Worker", "rate": 800}))
     wid = worker["labourAttendanceId"]
     body = {"projectId": "P-A", "labourAttendanceId": wid, "date": "2026-09-01", "status": "Present"}
+    data(call(api.workforce_handler, path, "POST", dict(body, operation="allocate")))
     for _ in range(2):
         data(call(api.workforce_handler, path, "POST", body, **SITE))
-    data(call(api.workforce_handler, path, "POST", dict(body, date="2026-09-02", status="Half Day"), **SITE))
+    data(call(api.workforce_handler, path, "POST", dict(body, date="2026-09-02", operation="allocate")))
+    data(call(api.workforce_handler, path, "POST", dict(body, date="2026-09-02", status="Absent"), **SITE))
     data(call(api.workforce_handler, path, "POST", {"projectId": "P-A", "operation": "debit", "labourAttendanceId": wid, "date": "2026-09-02", "amount": 100, "description": "Advance"}))
     result = data(call(api.workforce_handler, path, query={"projectId": "P-A", "date": "2026-09-02"}))[0]
-    assert result["status"] == "Half Day" and result["daysPresent"] == 1.5 and result["advanceDeductions"] == 100
+    assert result["status"] == "Absent" and result["daysPresent"] == 1 and result["advanceDeductions"] == 100
     assert call(api.workforce_handler, path, "POST", dict(body, projectId="P-B"), **SITE)["statusCode"] == 403
     assert "accNo" in worker and worker["accNo"] == ""
 
@@ -86,6 +88,7 @@ def test_expenses_pending_queue_and_approval_rollup():
 def test_payroll_uses_attendance_and_posts_once():
     worker = data(call(api.workforce_handler, "/supervisor/labour/attendance", "POST", {"projectId": "P-A", "name": "Worker", "rate": 800}))
     attendance = {"projectId": "P-A", "labourAttendanceId": worker["labourAttendanceId"], "date": "2026-08-01", "status": "Present"}
+    data(call(api.workforce_handler, "/supervisor/labour/attendance", "POST", dict(attendance, operation="allocate")))
     data(call(api.workforce_handler, "/supervisor/labour/attendance", "POST", attendance, **SITE))
     cycle = data(call(api.governance_handler, "/projects/P-A/payroll", "POST", {"month": "2026-08"}))
     assert cycle["amount"] == 800 and cycle["status"] == "Pending"

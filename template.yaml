@@ -296,6 +296,9 @@ Resources:
       Policies:
       - DynamoDBReadPolicy:
           TableName:
+            Ref: FieldOperationsTable
+      - DynamoDBReadPolicy:
+          TableName:
             Ref: FinanceTable
       - DynamoDBReadPolicy:
           TableName:
