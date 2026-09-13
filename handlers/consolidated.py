@@ -281,25 +281,41 @@ def _validate_assignments(data, org_id):
             raise ValueError("Assignments must reference active supervisors in this organization")
 
 
-def _attendance(identity, table, pk, project_id, org_id, path, method):
+def _attendance_location(body):
+    location = body.get("location")
+    if not isinstance(location, dict):
+        raise ValueError("Allow location access before checking in or out")
+    result = {}
+    for field, low, high in [("latitude", -90, 90), ("longitude", -180, 180), ("accuracy", 0, None)]:
+        value = location.get(field)
+        if isinstance(value, bool) or not isinstance(value, (int, Decimal)) or not Decimal(value).is_finite() or value < low or (high is not None and value > high):
+            raise ValueError(f"Invalid location {field}")
+        result[field] = value
+    return result
+
+
+def _attendance(identity, table, pk, project_id, org_id, path, method, body):
     now = datetime.now(timezone.utc)
     record_id = f"{identity.user_id}#{now.date().isoformat()}"
     key = {"PK": pk, "SK": f"ATTENDANCE#{record_id}"}
     if method == "POST" and path.endswith("/check-in"):
+        location = _attendance_location(body)
         item = {**key, "attendanceId": record_id, "entityType": "attendance", "orgId": org_id,
                 "projectId": project_id, "supervisorId": identity.user_id, "createdBy": identity.user_id,
-                "date": now.date().isoformat(), "checkIn": now.isoformat(), "createdAt": now.isoformat()}
+                "date": now.date().isoformat(), "checkIn": now.isoformat(), "createdAt": now.isoformat(),
+                "checkInLocation": {**location, "recordedAt": now.isoformat()}}
         table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK)")
         return _response(201, {"success": True, "data": _clean(item)})
     if method == "POST" and path.endswith("/check-out"):
+        location = _attendance_location(body)
         existing = table.get_item(Key=key, ConsistentRead=True).get("Item")
         if not existing or existing.get("orgId") != org_id:
             return _error(409, "NO_CHECK_IN", "Check in before checking out")
         seconds = int((now - datetime.fromisoformat(existing["checkIn"])).total_seconds())
         result = table.update_item(Key=key,
-            UpdateExpression="SET checkOut = :out, durationSeconds = :duration",
+            UpdateExpression="SET checkOut = :out, durationSeconds = :duration, checkOutLocation = :location",
             ConditionExpression="attribute_exists(checkIn) AND attribute_not_exists(checkOut) AND orgId = :org",
-            ExpressionAttributeValues={":out": now.isoformat(), ":duration": seconds, ":org": org_id}, ReturnValues="ALL_NEW")
+            ExpressionAttributeValues={":out": now.isoformat(), ":duration": seconds, ":org": org_id, ":location": {**location, "recordedAt": now.isoformat()}}, ReturnValues="ALL_NEW")
         return _response(200, {"success": True, "data": _clean(result["Attributes"])})
     if method == "GET" and path.endswith("/history"):
         prefix = f"ATTENDANCE#{identity.user_id}#" if SUPERVISOR in identity.roles else "ATTENDANCE#"
@@ -339,7 +355,7 @@ def _domain_handler(domain, event, context):
         workflows.validate(identity, resource, method, path, data)
         if resource == "attendance":
             _validate_data(resource, data)
-            return _attendance(identity, table, pk, project_id, org_id, path, method)
+            return _attendance(identity, table, pk, project_id, org_id, path, method, data)
         if method == "GET" and path in {"/dashboard/analytics", "/reports/executive"}:
             period = workflows.report_period(query) if path == "/reports/executive" else None
             projects = _all_items(get_table("PROJECTS_TABLE"), KeyConditionExpression=Key("PK").eq(f"ORG#{org_id}") & Key("SK").begins_with("PROJECT#"))

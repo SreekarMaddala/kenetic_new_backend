@@ -159,7 +159,7 @@ def test_disable_account_blocks_existing_token_even_if_cognito_fails(cognito):
 
 def test_attendance_uses_authenticated_user_and_prevents_duplicates():
     args = {"sub": "site-a", "role": SUPERVISOR}
-    body = {"projectId": "P-A", "supervisorId": "site-b"}
+    body = {"projectId": "P-A", "supervisorId": "site-b", "location": {"latitude": 12.97, "longitude": 77.59, "accuracy": 15}}
     checkin = data(api.workforce_handler(event("/supervisor/attendance/check-in", "POST", body, **args), None))
     assert checkin["supervisorId"] == "site-a"
     assert api.workforce_handler(event("/supervisor/attendance/check-in", "POST", body, **args), None)["statusCode"] == 409
