@@ -126,7 +126,7 @@ def validate_transition(identity, resource, old, body):
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         old_status = str(old.get("status", "Pending")).lower()
         new_status = str(body["status"]).lower()
-        transitions = {"draft": {"pending"}, "pending": {"approved", "rejected"}, "approved": {"issued"} if resource == "material" else set(), "rejected": {"pending"}}
+        transitions = {"draft": {"pending"}, "pending": {"approved", "rejected"}, "approved": {"issued"} if resource == "material" else ({"pending"} if resource == "payment" else set()), "rejected": {"pending"}}
         if new_status != old_status and new_status not in transitions.get(old_status, set()):
             raise ValueError("Invalid approval transition")
         if new_status == "issued":
@@ -315,10 +315,11 @@ def labour(identity, method, body, query, pk, org, pid):
             {"Update": {"TableName": table.name, "Key": {"PK": pk, "SK": f"MONTH#{day[:7]}"}, "UpdateExpression": "ADD revision :one", "ExpressionAttributeValues": {":one": 1}}},
         ])
         return clean(item)
-    if operation != "attendance" or body.get("status") not in {"Present", "Absent"}:
-        raise ValueError("Select Present or Absent")
-    if body.get("nightShift"):
-        raise ValueError("Night shifts are no longer part of daily attendance")
+    if operation != "attendance" or body.get("status") not in {"Present", "Half Day", "Absent"}:
+        raise ValueError("Select Present, Half Day, or Absent")
+    night_shift = body.get("nightShift", False)
+    if not isinstance(night_shift, bool):
+        raise ValueError("Night shift must be true or false")
     payment_status = body.get("paymentStatus", "Not paid")
     if payment_status not in {"Paid", "Not paid"}:
         raise ValueError("Select Paid or Not paid")
@@ -331,8 +332,8 @@ def labour(identity, method, body, query, pk, org, pid):
     rate = existing.get("rate", worker["rate"])
     item = {"PK": pk, "SK": f"DAILY#{wid}#{day}", "labourId": wid, "date": day, "status": body["status"],
             "entityType": "daily-wage", "paymentStatus": payment_status, "rate": rate,
-            "wage": rate if body["status"] == "Present" else 0,
-            "nightShift": False, "orgId": org, "projectId": pid, "updatedAt": now(), "createdBy": identity.user_id}
+            "wage": (rate if body["status"] == "Present" else (rate * Decimal("0.5") if body["status"] == "Half Day" else 0)) * (Decimal("2") if night_shift and body["status"] != "Absent" else Decimal("1")),
+            "nightShift": night_shift, "orgId": org, "projectId": pid, "updatedAt": now(), "createdBy": identity.user_id}
     table.meta.client.transact_write_items(TransactItems=[
         {"Update": {"TableName": table.name, "Key": allocation_key, "UpdateExpression": "SET attendanceStarted = :yes", "ConditionExpression": "projectId = :pid", "ExpressionAttributeValues": {":yes": True, ":pid": pid}}},
         {"ConditionCheck": {"TableName": get_table("SETTINGS_TABLE").name, "Key": {"PK": pk, "SK": f"PAYROLL#{day[:7]}"}, "ConditionExpression": "attribute_not_exists(PK)"}},

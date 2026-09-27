@@ -261,7 +261,15 @@ def _validate_data(resource, data, updating=False):
         raise ValueError("Request contains protected fields")
     if not updating and resource in {"organization", "project", "vendor", "inventory-item"}:
         if not isinstance(data.get("name"), str) or not data["name"].strip():
-}
+            raise ValueError("Name is required")
+    for field in {"budget", "amount", "grossAmount", "netPayable", "spent"} & data.keys():
+        value = data[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            raise ValueError(f"{field} must be a non-negative number")
+    if "supervisorIds" in data:
+        ids = data["supervisorIds"]
+        if resource != "project" or not isinstance(ids, list) or any(not isinstance(x, str) for x in ids) or len(ids) > 100:
+            raise ValueError("supervisorIds must be a list of at most 100 account IDs")
 
 
 def _response(status, payload):
@@ -475,21 +483,23 @@ def _validate_assignments(data, org_id):
         profile = users_table.get_item(
             Key={"PK": f"ORG#{org_id}", "SK": f"USER#{user_id}"}, ConsistentRead=True,
         ).get("Item")
-        
+
         if not profile:
             items = users_table.query(
                 KeyConditionExpression=Key("PK").eq(f"ORG#{org_id}"),
-                FilterExpression=Attr("employeeId").eq(user_id) | Attr("email").eq(user_id) | Attr("id").eq(user_id) | Attr("sub").eq(user_id)
+                FilterExpression=Attr("employeeId").eq(user_id) | Attr("email").eq(user_id) | Attr("id").eq(user_id) | Attr("sub").eq(user_id),
             ).get("Items", [])
             if items:
                 profile = items[0]
 
         if not profile:
             raise ValueError("Assignments must reference active supervisors in this organization")
-        
-        role = str(profile.get("role", "")).lower()
-        status = str(profile.get("status", "")).lower()
-        if role not in ("supervisor", "operations_admin", "super_admin") or status not in ("active", "invited"):
+
+        if str(profile.get("orgId", "")).lower() != str(org_id).lower():
+            raise ValueError("Assignments must reference active supervisors in this organization")
+        if str(profile.get("role", "")).lower() != SUPERVISOR:
+            raise ValueError("Assignments must reference active supervisors in this organization")
+        if str(profile.get("status", "")).lower() != "active":
             raise ValueError("Assignments must reference active supervisors in this organization")
 
 
@@ -600,6 +610,9 @@ def _domain_handler(domain, event, context):
             if resource == "material":
                 items = [i for i in items if workflows.material_kind(i) == path.split("/")[3]]
             if resource == "logistics-trip":
+                items = _all_items(table, "scan", FilterExpression=Attr("orgId").eq(org_id))
+                if query.get("projectId"):
+                    items = [i for i in items if i.get("tripType") == "vehicle_registration" or i.get("projectId") == query.get("projectId")]
                 items = [i for i in items if workflows.logistics_visible(identity, i)]
             if resource == "project":
                 items = workflows.project_totals(items, org_id)
@@ -641,7 +654,7 @@ def _domain_handler(domain, event, context):
             now = datetime.now(timezone.utc).isoformat()
             item = {**data, "PK": pk, "SK": f"{resource.upper()}#{record_id}", "entityType": resource,
                     "orgId": org_id, "createdAt": now, "updatedAt": now, "createdBy": identity.user_id, "version": 1}
-            if resource not in {"project", "organization"}:
+            if resource not in {"project", "organization"} and project_id:
                 item["projectId"] = project_id
             if SUPERVISOR in identity.roles:
                 item["supervisorId"] = identity.user_id
