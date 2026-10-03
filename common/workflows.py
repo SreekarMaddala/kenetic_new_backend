@@ -595,7 +595,64 @@ def payment_material(body, org, pk):
             raise ValueError("Choose an approved bill in this project")
 
 
+def validate_subcontractor(body, org, pk, pid, existing=None):
+    merged = {**(existing or {}), **body}
+    kind = merged.get("type", "Contractor")
+    if existing and ("type" in body or "registryId" in body or "contractorId" in body):
+        for field in ("type", "registryId", "contractorId"):
+            if field in body and body[field] != existing.get(field):
+                raise ValueError("Subcontractor links and record type cannot be changed")
+    if kind not in {"Contractor", "Procurement"}:
+        raise ValueError("Invalid subcontractor record type")
+    if not pid:
+        if kind != "Contractor":
+            raise ValueError("Create procurement requests inside a project")
+        for field in ("name", "contactPerson", "trade"):
+            if not isinstance(merged.get(field), str) or not merged[field].strip():
+                raise ValueError(f"{field} is required")
+            if field in body:
+                body[field] = body[field].strip()
+    elif kind == "Contractor" and (not existing or merged.get("registryId")):
+        registry = get_table("PARTIES_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"SUBCONTRACTOR#{merged.get('registryId', '')}"}, ConsistentRead=True).get("Item")
+        if not registry or registry.get("orgId") != org or registry.get("type") == "Procurement":
+            raise ValueError("Select an onboarded subcontractor in this organization")
+        if not existing and registry.get("status") != "Active":
+            raise ValueError("Select an active subcontractor")
+        if not str(merged.get("scopeOfWork", "")).strip():
+            raise ValueError("Scope of work is required")
+        for field in ("name", "contactPerson", "phone", "email", "trade"):
+            body[field] = registry.get(field, "")
+        if not existing:
+            body["subcontractorId"] = registry["subcontractorId"]
+    elif kind == "Procurement" and (not existing or ("contractorId" in merged and set(body) - {"status"})):
+        contractor = get_table("PARTIES_TABLE").get_item(Key={"PK": pk, "SK": f"SUBCONTRACTOR#{merged.get('contractorId', '')}"}, ConsistentRead=True).get("Item")
+        if not contractor or contractor.get("type") == "Procurement" or contractor.get("status") != "Active":
+            raise ValueError("Select an active subcontractor assigned to this project")
+        body["contractorName"] = contractor["name"]
+        number(merged.get("quantity"), "Quantity", True)
+    if kind == "Contractor":
+        if merged.get("status", "Active") not in {"Active", "Inactive"}:
+            raise ValueError("Choose Active or Inactive status")
+        if not existing:
+            body.setdefault("type", "Contractor")
+            body.setdefault("status", "Active")
+        if "contractValue" in merged:
+            number(merged["contractValue"], "Contract value")
+        for field in ("startDate", "endDate"):
+            if merged.get(field):
+                date.fromisoformat(merged[field])
+        if merged.get("startDate") and merged.get("endDate") and merged["endDate"] < merged["startDate"]:
+            raise ValueError("End date must be on or after start date")
+
+
 def handle(identity, domain, resource, method, path, body, query, pk, pid, org, rid):
+    if resource == "subcontractor":
+        if not path.startswith("/projects/") and pid:
+            raise ValueError("Use the project subcontractors route for assignments")
+        if method == "DELETE":
+            raise ValueError("Deactivate subcontractors to preserve project history")
+        if method == "POST":
+            validate_subcontractor(body, org, pk, pid)
     if resource in {"inventory-item", "vendor"} and pid:
         raise ValueError("Manage catalog materials and vendors at organization level")
     if resource == "inventory-item" and method == "DELETE":

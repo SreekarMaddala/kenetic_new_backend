@@ -15,10 +15,10 @@ def test_locations_persist_separately_and_history_remains_scoped(database):
     assert checkout["checkInLocation"] == checkin["checkInLocation"]
     assert checkout["checkOutLocation"]["latitude"] == 13
     assert checkout["checkOutLocation"]["recordedAt"] == checkout["checkOut"]
-    data(submit("check-in"))
+    assert submit("check-in")["statusCode"] == 403
     history = "/supervisor/attendance/history"
     admin_rows = data(api.workforce_handler(event(history, query={"projectId": "P-A"}), None))
-    assert len(admin_rows) == 2
+    assert len(admin_rows) == 1
     own = data(api.workforce_handler(event(history, query={"projectId": "P-A"}, **SITE), None))
     assert len(own) == 1 and own[0]["checkOutLocation"]["longitude"] == 78
     assert api.workforce_handler(event(history, query={"projectId": "P-A"}, sub="site-b", role="supervisor", org="ORG-B"), None)["statusCode"] == 403
@@ -31,3 +31,8 @@ def test_failed_checkout_does_not_close_shift(database):
     data(submit("check-in", **SITE))
     assert submit("check-out", None, **SITE)["statusCode"] == 400
     data(submit("check-out", {"latitude": 0, "longitude": 0, "accuracy": 0}, **SITE))
+
+@pytest.mark.parametrize("role", ["operations_admin", "super_admin"])
+@pytest.mark.parametrize("action", ["check-in", "check-out"])
+def test_admin_cannot_record_supervisor_attendance(database, role, action):
+    assert submit(action, role=role)["statusCode"] == 403

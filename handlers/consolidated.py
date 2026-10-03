@@ -234,7 +234,7 @@ def _check_route(domain, path, method):
     roots = {
         "platform-admin": r"/(?:super-admin/(?:organizations|employees)|employees)",
         "projects": r"/projects",
-        "project-commercial": r"/projects/[^/]+/(?:boq|milestones|subcontractors)",
+        "project-commercial": r"/(?:subcontractors|projects/[^/]+/(?:boq|milestones|subcontractors))",
         "workforce": r"/supervisor/(?:attendance/(?:check-in|check-out|history)|labour/attendance)",
         "field-operations": r"/supervisor/(?:dpr|materials/(?:grn|indents|stock)|logistics/trips)",
         "site-control": r"/projects/[^/]+/(?:issues|inspections|equipment)",
@@ -437,7 +437,7 @@ def _check_route(domain, path, method):
     roots = {
         "platform-admin": r"/(?:super-admin/(?:organizations|employees)|employees)",
         "projects": r"/projects",
-        "project-commercial": r"/projects/[^/]+/(?:boq|milestones|subcontractors)",
+        "project-commercial": r"/(?:subcontractors|projects/[^/]+/(?:boq|milestones|subcontractors))",
         "workforce": r"/supervisor/(?:attendance/(?:check-in|check-out|history)|labour/attendance)",
         "field-operations": r"/supervisor/(?:dpr|materials/(?:grn|indents|stock)|logistics/trips)",
         "site-control": r"/projects/[^/]+/(?:issues|inspections|equipment)",
@@ -517,6 +517,8 @@ def _attendance_location(body):
 
 
 def _attendance(identity, table, pk, project_id, org_id, path, method, body):
+    if method == "POST" and SUPERVISOR not in identity.roles:
+        raise AuthorizationError("Only supervisors can check in or out")
     now = datetime.now(timezone.utc)
     record_id = f"{identity.user_id}#{now.date().isoformat()}"
     key = {"PK": pk, "SK": f"ATTENDANCE#{record_id}"}
@@ -740,6 +742,8 @@ def _domain_handler(domain, event, context):
                     merged = {**existing, **data}
                     workflows.payment_material(merged, org_id, pk)
                     data.update({k: merged[k] for k in ("vendorName", "material", "materialUnit")})
+            if resource == "subcontractor":
+                workflows.validate_subcontractor(data, org_id, pk, project_id, existing)
             workflows.validate_transition(identity, resource, existing, data)
             if resource == "payment" and existing.get("billId") and data.get("status") == "Approved" and existing.get("status") != "Approved":
                 updated = workflows.approve_linked_payment(table, existing, data)

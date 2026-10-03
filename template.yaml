@@ -436,6 +436,38 @@ Resources:
             Method: OPTIONS
             Auth:
               Authorizer: NONE
+        SubcontractorRegistry:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors
+            Method: ANY
+        SubcontractorRegistryOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        SubcontractorRegistryItem:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors/{proxy+}
+            Method: ANY
+        SubcontractorRegistryItemOptions:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
         MilestonesRoot:
           Type: HttpApi
           Properties:
