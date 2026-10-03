@@ -729,6 +729,17 @@ def _domain_handler(domain, event, context):
                 _validate_assignments(data, org_id)
                 if "supervisorIds" in data:
                     data["supervisor"] = workflows.assignment_names(data["supervisorIds"], org_id)
+            if resource == "inventory-item" and workflows.catalog_identity({**existing, **data}) != workflows.catalog_identity(existing):
+                raise ValueError("Material name and unit identify a catalog entry; add a new material instead")
+            if resource == "payment":
+                if "status" in data:
+                    if set(data) != {"status"}:
+                        raise ValueError("Review a payment separately from changes to its details")
+                    data["status"] = str(data["status"]).title()
+                elif data:
+                    merged = {**existing, **data}
+                    workflows.payment_material(merged, org_id, pk)
+                    data.update({k: merged[k] for k in ("vendorName", "material", "materialUnit")})
             workflows.validate_transition(identity, resource, existing, data)
             if resource == "payment" and existing.get("billId") and data.get("status") == "Approved" and existing.get("status") != "Approved":
                 updated = workflows.approve_linked_payment(table, existing, data)

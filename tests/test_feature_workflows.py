@@ -6,7 +6,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def vendor(database):
-    put("PARTIES_TABLE", "ORG#ORG-A", "VENDOR#vendor-1", orgId="ORG-A", vendorId="vendor-1", name="Supplier", entityType="vendor")
+    put("INVENTORY_TABLE", "ORG#ORG-A", "INVENTORY-ITEM#cement", orgId="ORG-A", itemId="cement", name="Cement", unit="Bags", entityType="inventory-item")
+    put("PARTIES_TABLE", "ORG#ORG-A", "VENDOR#vendor-1", orgId="ORG-A", vendorId="vendor-1", name="Supplier", materialIds=["cement"], entityType="vendor")
 
 SITE = {"sub": "site-a", "role": SUPERVISOR}
 
@@ -64,7 +65,7 @@ def test_stock_receipt_transfer_is_atomic_and_idempotent():
 
 
 def test_payment_approval_visible_globally_and_spending_not_double_counted():
-    payment = data(call(api.finance_handler, "/payments", "POST", {"projectId": "P-A", "vendorId": "vendor-1", "amount": 50, "mode": "UPI", "description": "Receipt"}))
+    payment = data(call(api.finance_handler, "/payments", "POST", {"projectId": "P-A", "vendorId": "vendor-1", "materialId": "cement", "amount": 50, "mode": "UPI", "description": "Receipt"}))
     assert payment["status"] == "Pending"
     assert data(call(api.finance_handler, "/payments"))[0]["paymentId"] == payment["paymentId"]
     assert data(call(api.projects_handler, "/projects/P-A"))["spent"] == 20
@@ -135,7 +136,7 @@ def test_staff_salary_snapshot_is_not_rewritten_by_profile_changes():
 
 
 def test_repeated_financial_create_is_not_a_duplicate_payment():
-    body = {"projectId": "P-A", "vendorId": "vendor-1", "amount": 20, "requestId": "same-payment-001"}
+    body = {"projectId": "P-A", "vendorId": "vendor-1", "materialId": "cement", "amount": 20, "requestId": "same-payment-001"}
     first = data(call(api.finance_handler, "/payments", "POST", body))
     again = data(call(api.finance_handler, "/payments", "POST", body))
     assert first["paymentId"] == again["paymentId"]
@@ -154,7 +155,7 @@ def test_document_cannot_be_repointed_to_another_tenant(monkeypatch):
 def test_linked_bill_cannot_be_overpaid_by_multiple_approvals():
     bill=data(call(api.finance_handler,"/projects/P-A/bills","POST",{"grossAmount":100,"billNumber":"B1"}))
     data(call(api.finance_handler,"/projects/P-A/bills/"+bill["billId"],"PATCH",{"status":"Approved"}))
-    payment={"projectId":"P-A","vendorId":"vendor-1","amount":60,"billId":bill["billId"]}
+    payment={"projectId":"P-A","vendorId":"vendor-1","materialId":"cement","amount":60,"billId":bill["billId"]}
     first=data(call(api.finance_handler,"/payments","POST",payment))
     second=data(call(api.finance_handler,"/payments","POST",payment))
     data(call(api.finance_handler,"/projects/P-A/payments/"+first["paymentId"],"PATCH",{"status":"Approved"}))

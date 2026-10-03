@@ -124,7 +124,7 @@ def validate_transition(identity, resource, old, body):
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         old_status = str(old.get("status", "Pending")).lower()
         new_status = str(body["status"]).lower()
-        transitions = {"draft": {"pending"}, "pending": {"approved", "rejected"}, "approved": {"issued"} if resource == "material" else ({"pending"} if resource == "payment" else set()), "rejected": {"pending"}}
+        transitions = {"draft": {"pending"}, "pending": {"approved", "rejected"}, "approved": {"issued"} if resource == "material" else set(), "rejected": {"pending"}}
         if new_status != old_status and new_status not in transitions.get(old_status, set()):
             raise ValueError("Invalid approval transition")
         if new_status == "issued":
@@ -557,19 +557,73 @@ def files(identity, method, path, body, pk, org, pid, resource, rid):
     return None
 
 
+def catalog_identity(item):
+    return tuple(" ".join(str(item.get(key, "")).split()).casefold() for key in ("name", "unit"))
+
+
+def catalog_material(org, material_id):
+    if not isinstance(material_id, str) or not material_id:
+        raise ValueError("Select a material from the Inventory Catalog")
+    item = get_table("INVENTORY_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"INVENTORY-ITEM#{material_id}"}, ConsistentRead=True).get("Item")
+    if not item or item.get("orgId") != org:
+        raise ValueError("Select a material from this organization's Inventory Catalog")
+    return item
+
+
+def vendor_materials(body, org):
+    ids = body.get("materialIds", [])
+    if not isinstance(ids, list) or len(ids) > 100 or any(not isinstance(i, str) or not i for i in ids):
+        raise ValueError("Select up to 100 catalog materials")
+    if len(set(ids)) != len(ids):
+        raise ValueError("Each material can only be selected once")
+    items = [catalog_material(org, i) for i in ids]
+    body["materialIds"] = ids
+    body["materialsSupplied"] = ", ".join(f"{i['name']} ({i['unit']})" for i in items)
+
+
+def payment_material(body, org, pk):
+    vendor = get_table("PARTIES_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"VENDOR#{body.get('vendorId', '')}"}, ConsistentRead=True).get("Item")
+    if not vendor or vendor.get("orgId") != org:
+        raise ValueError("Choose a vendor in this organization")
+    item = catalog_material(org, body.get("materialId"))
+    if item["itemId"] not in vendor.get("materialIds", []):
+        raise ValueError("Assign this material to the selected vendor first")
+    body.update(vendorName=vendor["name"], material=item["name"], materialUnit=item["unit"])
+    if body.get("billId"):
+        bill = get_table("FINANCE_TABLE").get_item(Key={"PK": pk, "SK": f"BILL#{body['billId']}"}, ConsistentRead=True).get("Item")
+        if not bill or bill.get("status") != "Approved":
+            raise ValueError("Choose an approved bill in this project")
+
+
 def handle(identity, domain, resource, method, path, body, query, pk, pid, org, rid):
+    if resource in {"inventory-item", "vendor"} and pid:
+        raise ValueError("Manage catalog materials and vendors at organization level")
+    if resource == "inventory-item" and method == "DELETE":
+        raise ValueError("Keep catalog materials referenced by vendors and payments")
+    if resource == "inventory-item" and method == "POST":
+        for field in ("name", "unit"):
+            if not isinstance(body.get(field), str) or not body[field].strip():
+                raise ValueError("Material name and unit are required")
+            body[field] = " ".join(body[field].split())
+        identity_key = catalog_identity(body)
+        # A deterministic key plus conditional put prevents concurrent duplicates.
+        # Reuse a legacy ID if this material was registered before canonical IDs.
+        existing = next((i for i in rows(get_table("INVENTORY_TABLE"), pk, "INVENTORY-ITEM#") if catalog_identity(i) == identity_key), None)
+        body["itemId"] = existing["itemId"] if existing else hashlib.sha256(__import__('json').dumps(identity_key).encode()).hexdigest()[:24]
+    if resource == "vendor" and method in {"POST", "PUT", "PATCH"}:
+        if "materialsSupplied" in body and "materialIds" not in body:
+            raise ValueError("Select catalog materials instead of entering material names")
+        if method == "POST" or "materialIds" in body:
+            vendor_materials(body, org)
+        if method == "POST":
+            body.setdefault("status", "Active")
     if resource == "payment" and method == "POST":
-        vendor = get_table("PARTIES_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"VENDOR#{body.get('vendorId', '')}"}, ConsistentRead=True).get("Item")
-        if not vendor or vendor.get("orgId") != org:
-            raise ValueError("Choose a vendor in this organization")
-        body["vendorName"] = vendor["name"]
-        if body.get("billId"):
-            bill = get_table("FINANCE_TABLE").get_item(Key={"PK": pk, "SK": f"BILL#{body['billId']}"}, ConsistentRead=True).get("Item")
-            if not bill or bill.get("status") != "Approved":
-                raise ValueError("Choose an approved bill in this project")
+        payment_material(body, org, pk)
     if resource == "inventory-item" and method == "GET" and not rid:
         table = get_table("INVENTORY_TABLE")
         all_rows = rows(table, org=org)
+        if query.get("catalog") == "true":
+            return [clean(i) for i in all_rows if i.get("entityType") == "inventory-item" and i.get("PK") == f"ORG#{org}"]
         catalog = {hashlib.sha256(f"{str(i['name']).casefold()}|{str(i.get('unit','')).casefold()}".encode()).hexdigest()[:24]: i for i in all_rows if i.get("entityType") == "inventory-item"}
         balances = [i for i in all_rows if i.get("SK", "").startswith("BALANCE#")]
         for i in balances:
