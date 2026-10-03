@@ -120,8 +120,6 @@ def validate_transition(identity, resource, old, body):
     approval = resource in {"bill", "expense", "payment", "dpr", "material"} or (resource == "subcontractor" and old.get("type") == "Procurement")
     if not approval:
         return
-    if str(old.get("status", "Pending")).lower() == "approved" and set(body) - {"status"}:
-        raise ValueError("Approved records are immutable")
     if "status" in body:
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         old_status = str(old.get("status", "Pending")).lower()
@@ -134,7 +132,7 @@ def validate_transition(identity, resource, old, body):
         if new_status != old_status:
             body["approvedBy"] = identity.user_id
             body["approvedAt"] = now()
-    if str(old.get("status", "Pending")).lower() == "approved" and set(body) - {"status"}:
+    if str(old.get("status", "Pending")).lower() == "approved" and set(body) - {"status", "approvedBy", "approvedAt"}:
         raise ValueError("Approved records are immutable")
 
 
