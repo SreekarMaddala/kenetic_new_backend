@@ -75,9 +75,6 @@ def _response(status, payload):
         "headers": {
             "Content-Type": "application/json",
             "Cache-Control": "no-store",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
-            "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
         },
         "body": json.dumps(payload, default=lambda value: int(value) if isinstance(value, Decimal) and value == value.to_integral_value() else float(value) if isinstance(value, Decimal) else str(value)),
     }
@@ -278,9 +275,6 @@ def _response(status, payload):
         "headers": {
             "Content-Type": "application/json",
             "Cache-Control": "no-store",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
-            "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
         },
         "body": json.dumps(payload, default=lambda value: int(value) if isinstance(value, Decimal) and value == value.to_integral_value() else float(value) if isinstance(value, Decimal) else str(value)),
     }
@@ -550,13 +544,11 @@ def _attendance(identity, table, pk, project_id, org_id, path, method, body):
 
 def _domain_handler(domain, event, context):
     try:
-        http = event.get("requestContext", {}).get("http", {})
-        method = (http.get("method") or event.get("httpMethod") or "GET").upper()
-        if method == "OPTIONS":
-            return _response(200, {"success": True})
         identity = active_identity(event)
-        require_role(identity, *DOMAIN_CONFIG[domain][1])
         method, path, data = _event_parts(event)
+        personal_salary = domain == "governance" and method == "GET" and re.fullmatch(r"/projects/[^/]+/payroll/me", path)
+        if not personal_salary:
+            require_role(identity, *DOMAIN_CONFIG[domain][1])
         if not _check_route(domain, path, method):
             return _error(404, "NOT_FOUND", "Unknown operation")
         if path.startswith("/super-admin/"):
@@ -776,10 +768,6 @@ def _domain_handler(domain, event, context):
 
 def auth_handler(event, context):
     try:
-        http = event.get("requestContext", {}).get("http", {})
-        method = (http.get("method") or event.get("httpMethod") or "GET").upper()
-        if method == "OPTIONS":
-            return _response(200, {"success": True})
         identity = active_identity(event)
         method, path, _ = _event_parts(event)
         if method == "GET" and path == "/auth/me":

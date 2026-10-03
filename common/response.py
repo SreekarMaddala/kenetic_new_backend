@@ -1,5 +1,4 @@
 import json
-import os
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
@@ -15,12 +14,9 @@ class DecimalEncoder(json.JSONEncoder):
 
 
 def success_response(data: Any, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-    """Generates standard success response for API Gateway with CORS."""
+    """Generates a JSON success response. API Gateway owns CORS."""
     default_headers = {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173"),
-        "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
     }
     if headers:
         default_headers.update(headers)
@@ -38,12 +34,9 @@ def success_response(data: Any, status_code: int = 200, headers: Optional[Dict[s
 
 
 def error_response(message: str, status_code: int = 400, error_code: Optional[str] = None, details: Any = None) -> Dict[str, Any]:
-    """Generates standard error response for API Gateway with CORS."""
+    """Generates a JSON error response. API Gateway owns CORS."""
     headers = {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173"),
-        "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
     }
 
     body: Dict[str, Any] = {

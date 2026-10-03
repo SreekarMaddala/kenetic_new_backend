@@ -429,6 +429,18 @@ def re_id(value):
 
 def payroll(identity, method, path, body, pk, pid, org):
     table = get_table("SETTINGS_TABLE")
+    if path.endswith("/me"):
+        if method != "GET":
+            raise AuthorizationError("Personal salary is read-only")
+        profile = table.get_item(Key={"PK": pk, "SK": f"SALARY#{identity.user_id}"}, ConsistentRead=True).get("Item")
+        history = []
+        for cycle in rows(table, pk, "PAYROLL#"):
+            for member in cycle.get("staff", []):
+                if member.get("labourId") == identity.user_id and member.get("salary"):
+                    history.append({"month": cycle["month"], "status": cycle["status"],
+                                    "gross": member["gross"], "deductions": member["deductions"],
+                                    "net": member["net"], "paidAt": cycle.get("paidAt")})
+        return {"profile": clean(profile) if profile else None, "history": sorted(history, key=lambda item: item["month"], reverse=True)}
     if method == "DELETE":
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         month = path.rsplit("/", 1)[-1]
