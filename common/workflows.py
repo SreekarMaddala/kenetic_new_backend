@@ -247,6 +247,13 @@ def labour(identity, method, body, query, pk, org, pid):
     table = get_table("FIELD_OPERATIONS_TABLE")
     day = str(body.get("date") or query.get("date") or now()[:10])
     date.fromisoformat(day)
+    if not pid:
+        require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+        if method == "GET":
+            return [clean(w) for w in rows(table, org=org) if w.get("entityType") == "worker"]
+        operation = body.get("operation", "attendance" if body.get("labourAttendanceId") else "register")
+        if method != "POST" or operation != "register":
+            raise ValueError("A projectId is required for allocation and attendance")
     if method == "GET":
         roster = query.get("roster") == "true"
         if roster:
