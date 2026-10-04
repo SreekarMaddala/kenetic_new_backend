@@ -30,8 +30,8 @@ def test_only_admin_can_unlock_attendance_and_each_date_requires_confirmation(da
     data(call(api.workforce_handler, PATH, "POST", dict(body, date="2026-09-02", status="Absent")))
     assert report("2026-09-02")[0]["daysPresent"] == 1
 
-@pytest.mark.parametrize("changes", [{"status": "Half Day"}, {"nightShift": True}, {"paymentStatus": "Partial"}, {"status": "Absent", "paymentStatus": "Paid"}])
-def test_rejects_removed_or_invalid_daily_options(database, changes):
+@pytest.mark.parametrize("changes", [{"paymentStatus": "Partial"}, {"status": "Absent", "paymentStatus": "Paid"}, {"status": "Absent", "nightShift": True}, {"nightShift": "yes"}])
+def test_rejects_invalid_daily_options(database, changes):
     body = worker()
     confirm(body)
     assert call(api.workforce_handler, PATH, "POST", dict(body, **changes), **SITE)["statusCode"] == 400
@@ -73,7 +73,7 @@ def test_payment_correction_recalculates_amount_owed(database):
     body = worker()
     confirm(body)
     data(call(api.workforce_handler, PATH, "POST", dict(body, paymentStatus="Paid"), **SITE))
-    data(call(api.workforce_handler, PATH, "POST", body, **SITE))
+    data(call(api.workforce_handler, PATH, "POST", dict(body, expectedVersion=1, correctionReason="Incorrect payment recorded; no payment was made"), **SITE))
     row = report()[0]
     assert row["dailyPaid"] == 0 and row["unpaidWages"] == 800
     assert data(call(api.projects_handler, "/projects/P-A"))["spent"] == 20

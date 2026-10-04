@@ -21,7 +21,7 @@ from common.authz import (
 )
 from common.dynamo import get_table, convert_floats_to_decimals
 from common.accounts import create_account, update_account, resend_invitation
-from common import workflows
+from common import workflows, audit
 
 
 DOMAIN_CONFIG = {
@@ -228,206 +228,8 @@ def _all_items(table, operation="query", **kwargs):
 
 def _check_route(domain, path, method):
     """Greedy API Gateway routes must not turn unknown URLs into arbitrary CRUD."""
-    roots = {
-        "platform-admin": r"/(?:super-admin/(?:organizations|employees)|employees)",
-        "projects": r"/projects",
-        "project-commercial": r"/(?:subcontractors|projects/[^/]+/(?:boq|milestones|subcontractors))",
-        "workforce": r"/supervisor/(?:attendance/(?:check-in|check-out|history)|labour/attendance)",
-        "field-operations": r"/supervisor/(?:dpr|materials/(?:grn|indents|stock)|logistics/trips)",
-        "site-control": r"/projects/[^/]+/(?:issues|inspections|equipment)",
-        "document-control": r"/projects/[^/]+/(?:drawings|documents)",
-        "supply-chain": r"/(?:vendors|inventory|warehouse/(?:grn|issue-vouchers))",
-        "finance": r"/(?:payments|expenses|projects/[^/]+/(?:payments|bills|expenses))",
-        "governance": r"/(?:settings|projects/[^/]+/payroll)",
-    }
-    if (domain, path, method) in {
-        ("governance", "/dashboard/analytics", "GET"),
-        ("governance", "/reports/executive", "GET"),
-        ("platform-admin", "/super-admin/metrics", "GET"),
-    }:
+    if domain == "projects" and method == "GET" and re.fullmatch(r"/projects/[^/]+/spending", path):
         return True
-    suffix = r"(?:/[^/]+(?:/(?:status|invitation|download|extract))?)?"
-    return bool(re.fullmatch(roots[domain] + suffix, path)) and method in {"GET", "POST", "PUT", "PATCH", "DELETE"}
-
-
-def _validate_data(resource, data, updating=False):
-    immutable = {"PK", "SK", "entityType", "createdAt", "updatedAt", "createdBy", "cognitoUsername", "version", "recordKind", "approvedBy", "approvedAt", "paidAmount"}
-    if updating:
-        immutable |= {"orgId", "projectId", _id_field(resource), "storageKey"}
-    if set(data) & immutable:
-        raise ValueError("Request contains protected fields")
-    if not updating and resource in {"organization", "project", "vendor", "inventory-item"}:
-        if not isinstance(data.get("name"), str) or not data["name"].strip():
-            raise ValueError("Name is required")
-    for field in {"budget", "amount", "grossAmount", "netPayable", "spent"} & data.keys():
-        value = data[field]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
-            raise ValueError(f"{field} must be a non-negative number")
-    if "supervisorIds" in data:
-        ids = data["supervisorIds"]
-        if resource != "project" or not isinstance(ids, list) or any(not isinstance(x, str) for x in ids) or len(ids) > 100:
-            raise ValueError("supervisorIds must be a list of at most 100 account IDs")
-
-
-def _response(status, payload):
-    return {
-        "statusCode": status,
-        "headers": {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-store",
-        },
-        "body": json.dumps(payload, default=lambda value: int(value) if isinstance(value, Decimal) and value == value.to_integral_value() else float(value) if isinstance(value, Decimal) else str(value)),
-    }
-
-
-def _error(status, code, message):
-    return _response(status, {"success": False, "error": {"code": code, "message": message}})
-
-
-def _event_parts(event):
-    http = event.get("requestContext", {}).get("http", {})
-    method = (http.get("method") or event.get("httpMethod") or "GET").upper()
-    path = event.get("rawPath") or event.get("path") or ""
-    stage = event.get("requestContext", {}).get("stage") or ""
-    if stage and path.startswith(f"/{stage}"):
-        path = path[len(stage) + 1:]
-    if not path.startswith("/"):
-        path = "/" + path
-    body = event.get("body") or "{}"
-    try:
-        data = json.loads(body) if isinstance(body, str) else body
-    except json.JSONDecodeError:
-        raise ValueError("Request body must be valid JSON")
-    if not isinstance(data, dict):
-        raise ValueError("Request body must be a JSON object")
-    return method, path.rstrip("/"), convert_floats_to_decimals(data)
-
-
-def _resource(path):
-    """Return a stable entity name from every supported frontend route."""
-    segments = path.strip("/").split("/")
-    # Identify the collection, never a user-controlled record ID later in the URL.
-    if segments[0] == "super-admin":
-        return {"organizations": "organization", "employees": "user"}.get(segments[1], "record")
-    if segments[0] == "employees":
-        return "user"
-    if segments[0] == "projects":
-        if len(segments) <= 2 or segments[2] in {"status", "invitation"}:
-            return "project"
-        path = "/" + segments[2]
-    elif segments[0] == "supervisor":
-        path = "/" + "/".join(segments[1:3] if segments[1] == "materials" else segments[1:2])
-    elif segments[0] == "warehouse":
-        path = "/" + "/".join(segments[:2])
-    else:
-        path = "/" + segments[0]
-    rules = (
-        (r"/organizations", "organization"), (r"/employees", "user"),
-        (r"/milestones", "milestone"), (r"/boq", "boq"),
-        (r"/subcontractors", "subcontractor"), (r"/labour", "labour-attendance"),
-        (r"/attendance", "attendance"), (r"/dpr", "dpr"),
-        (r"/materials/(grn|indents|stock)", "material"), (r"/logistics", "logistics-trip"),
-        (r"/issues", "issue"), (r"/inspections", "inspection"), (r"/equipment", "equipment"),
-        (r"/drawings", "drawing"), (r"/documents", "document"),
-        (r"/vendors", "vendor"), (r"/inventory", "inventory-item"),
-        (r"/warehouse/(grn|issue-vouchers)", "warehouse-event"),
-        (r"/bills", "bill"), (r"/expenses", "expense"), (r"/payments", "payment"),
-        (r"/payroll", "payroll"), (r"/settings", "setting"), (r"/projects", "project"),
-    )
-    for pattern, name in rules:
-        if re.search(pattern, path):
-            return name
-    return "record"
-
-
-def _project_id(path):
-    match = re.search(r"/projects/([^/]+)", path)
-    return match.group(1) if match else None
-
-
-def _item_id(path, resource):
-    segments = [part for part in path.split("/") if part]
-    resource_markers = {
-        "project": "projects", "organization": "organizations", "user": "employees",
-        "vendor": "vendors", "inventory-item": "inventory", "payment": "payments",
-        "boq": "boq", "subcontractor": "subcontractors", "drawing": "drawings",
-        "milestone": "milestones", "document": "documents", "bill": "bills", "expense": "expenses",
-        "issue": "issues", "inspection": "inspections", "equipment": "equipment",
-        "payroll": "payroll", "dpr": "dpr",
-    }
-    marker = resource_markers.get(resource)
-    if marker:
-        index = 2 if segments[0] == "projects" and resource != "project" else 1 if segments[0] in {"super-admin", "supervisor"} else 0
-        if index < len(segments) and segments[index] == marker and index + 1 < len(segments):
-            return segments[index + 1]
-    if resource == "material" and len(segments) >= 4 and segments[0] == "supervisor" and segments[1] == "materials" and segments[2] in {"grn", "indents", "stock"}:
-        return segments[3]
-    if resource == "logistics-trip" and len(segments) >= 4 and segments[0] == "supervisor" and segments[1] == "logistics" and segments[2] == "trips":
-        return segments[3]
-    if resource == "labour-attendance" and len(segments) >= 4 and segments[0] == "supervisor" and segments[1] == "labour" and segments[2] == "attendance":
-        return segments[3]
-    if resource == "warehouse-event" and len(segments) >= 3 and segments[0] == "warehouse" and segments[1] in {"grn", "issue-vouchers"}:
-        return segments[2]
-    return None
-
-
-def _id_field(resource):
-    return ID_FIELDS.get(resource, "recordId")
-
-
-def _table_for(domain, resource):
-    if resource == "user":
-        return get_table("USERS_TABLE")
-    if domain == "project-commercial" and resource == "subcontractor":
-        return get_table("PARTIES_TABLE")
-    if domain == "supply-chain" and resource == "vendor":
-        return get_table("PARTIES_TABLE")
-    if domain == "field-operations" and resource in {"material", "logistics-trip"}:
-        return get_table("MATERIALS_LOGISTICS_TABLE")
-    return get_table(DOMAIN_CONFIG[domain][0])
-
-
-def _pk(identity, path, resource, data, query=None):
-    query = query or {}
-    org_id = query.get("orgId") or data.get("orgId") or identity.organization_id
-    require_organization(identity, org_id)
-    project_id = _project_id(path) or data.get("projectId")
-    project_id = project_id or query.get("projectId")
-    if resource == "project":
-        return f"ORG#{org_id}", project_id
-    if project_id:
-        project = get_table("PROJECTS_TABLE").get_item(
-            Key={"PK": f"ORG#{org_id}", "SK": f"PROJECT#{project_id}"}, ConsistentRead=True,
-        ).get("Item")
-        if not project or project.get("orgId") != org_id:
-            raise AuthorizationError("Project is not accessible")
-        if SUPERVISOR in identity.roles and identity.user_id not in project.get("supervisorIds", []):
-            raise AuthorizationError("You are not assigned to this project")
-        return f"ORG#{org_id}#PROJECT#{project_id}", project_id
-    if resource == "organization":
-        org_id = _item_id(path, resource) or data.get("orgId") or identity.organization_id
-        return f"ORG#{org_id}", org_id
-    if SUPERVISOR in identity.roles:
-        raise ValueError("A projectId is required")
-    return f"ORG#{org_id}", None
-
-
-def _clean(item):
-    return {key: value for key, value in item.items() if key not in {"PK", "SK", "entityType", "cognitoUsername"}}
-
-
-def _all_items(table, operation="query", **kwargs):
-    items = []
-    while True:
-        page = getattr(table, operation)(**kwargs)
-        items.extend(page.get("Items", []))
-        if not page.get("LastEvaluatedKey"):
-            return items
-        kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
-
-
-def _check_route(domain, path, method):
-    """Greedy API Gateway routes must not turn unknown URLs into arbitrary CRUD."""
     roots = {
         "platform-admin": r"/(?:super-admin/(?:organizations|employees)|employees)",
         "projects": r"/projects",
@@ -522,7 +324,7 @@ def _attendance(identity, table, pk, project_id, org_id, path, method, body):
                 "projectId": project_id, "supervisorId": identity.user_id, "createdBy": identity.user_id,
                 "date": now.date().isoformat(), "checkIn": now.isoformat(), "createdAt": now.isoformat(),
                 "checkInLocation": {**location, "recordedAt": now.isoformat()}}
-        table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK)")
+        audit.put(table, identity, item, ConditionExpression="attribute_not_exists(PK)")
         return _response(201, {"success": True, "data": _clean(item)})
     if method == "POST" and path.endswith("/check-out"):
         location = _attendance_location(body)
@@ -530,11 +332,12 @@ def _attendance(identity, table, pk, project_id, org_id, path, method, body):
         if not existing or existing.get("orgId") != org_id:
             return _error(409, "NO_CHECK_IN", "Check in before checking out")
         seconds = int((now - datetime.fromisoformat(existing["checkIn"])).total_seconds())
-        result = table.update_item(Key=key,
-            UpdateExpression="SET checkOut = :out, durationSeconds = :duration, checkOutLocation = :location",
-            ConditionExpression="attribute_exists(checkIn) AND attribute_not_exists(checkOut) AND orgId = :org",
-            ExpressionAttributeValues={":out": now.isoformat(), ":duration": seconds, ":org": org_id, ":location": {**location, "recordedAt": now.isoformat()}}, ReturnValues="ALL_NEW")
-        return _response(200, {"success": True, "data": _clean(result["Attributes"])})
+        updated = dict(existing, checkOut=now.isoformat(), durationSeconds=seconds,
+                       checkOutLocation={**location, "recordedAt": now.isoformat()})
+        audit.put(table, identity, updated, before=existing, action="attendance.checked-out",
+                  ConditionExpression="attribute_exists(checkIn) AND attribute_not_exists(checkOut) AND orgId = :org",
+                  ExpressionAttributeValues={":org": org_id})
+        return _response(200, {"success": True, "data": _clean(updated)})
     if method == "GET" and path.endswith("/history"):
         prefix = f"ATTENDANCE#{identity.user_id}#" if SUPERVISOR in identity.roles else "ATTENDANCE#"
         items = _all_items(table, KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with(prefix))
@@ -565,6 +368,8 @@ def _domain_handler(domain, event, context):
         pk, project_id = _pk(identity, path, resource, data, query)
         org_id = query.get("orgId") or data.get("orgId") or identity.organization_id
         record_id = _item_id(path, resource)
+        if domain == "projects" and path.endswith("/spending"):
+            return _response(200, {"success": True, "data": workflows.spending_ledger(identity, org_id, project_id)})
         special = workflows.handle(identity, domain, resource, method, path, data, query, pk, project_id, org_id, record_id)
         if special is not None:
             return _response(200, {"success": True, "data": special})
@@ -584,7 +389,7 @@ def _domain_handler(domain, event, context):
                           "pendingApprovals": len(approvals), "approvals": approvals}
             else:
                 result = {"projectSummaries": [_clean(p) for p in projects],
-                          "totalExpenses": sum(f.get("amount", 0) for f in finance if f.get("entityType") == "expense" and workflows.in_report_period(f, period)),
+                          "totalExpenses": sum(f.get("amount", 0) for f in finance if f.get("entityType") == "expense" and str(f.get("status", "")).lower() == "approved" and workflows.in_report_period(f, period)),
                           "generatedAt": datetime.now(timezone.utc).isoformat()}
             return _response(200, {"success": True, "data": result})
         if method == "GET" and path == "/super-admin/metrics":
@@ -629,6 +434,7 @@ def _domain_handler(domain, event, context):
             if record_id:
                 return _error(405, "METHOD_NOT_ALLOWED", "Create records using the collection URL")
             _validate_data(resource, data)
+            workflows.validate_record(resource, data)
             if resource in {"bill", "expense", "payment", "dpr"}:
                 data.setdefault("status", "Pending")
             if resource == "material":
@@ -664,7 +470,7 @@ def _domain_handler(domain, event, context):
                     if any(prior.get(k) != v for k, v in data.items() if k != "status"):
                         raise ValueError("Request ID already used for different data")
                     return _response(200, {"success": True, "data": _clean(prior)})
-            table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)")
+            audit.put(table, identity, item, ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)")
             if resource == "organization" and data.get("adminEmail"):
                 admin_email = str(data["adminEmail"]).strip().lower()
                 admin_name = str(data.get("adminName") or f"{item['name']} Admin").strip()
@@ -708,14 +514,21 @@ def _domain_handler(domain, event, context):
         if method == "DELETE":
             if resource in {"user", "organization", "project"}:
                 return _error(405, "METHOD_NOT_ALLOWED", "Disable or archive this record instead of deleting it")
-            table.delete_item(Key=key, ConditionExpression="orgId = :org", ExpressionAttributeValues={":org": org_id})
+            table.meta.client.transact_write_items(TransactItems=[
+                {"Delete": {"TableName": table.name, "Key": key, "ConditionExpression": "orgId = :org", "ExpressionAttributeValues": {":org": org_id}}},
+                audit.operation(identity, f"{resource}.deleted", before=existing),
+            ])
             return _response(200, {"success": True, "data": {"deleted": True}})
         if method in {"PUT", "PATCH"}:
+            expected_version = data.pop("expectedVersion", None)
+            if expected_version is not None and (isinstance(expected_version, bool) or not isinstance(expected_version, (int, Decimal)) or expected_version != existing.get("version", 0)):
+                return _error(409, "CONFLICT", "The record changed. Refresh before saving your changes.")
             if SUPERVISOR in identity.roles and resource in {"dpr", "labour-attendance"} and existing.get("createdBy") != identity.user_id:
                 raise AuthorizationError("You can only edit your own submissions")
             if resource == "user":
                 return _response(200, {"success": True, "data": _clean(update_account(identity, existing, data))})
             _validate_data(resource, data, updating=True)
+            workflows.validate_record(resource, data, existing)
             if resource == "organization" and "status" in data:
                 if existing["orgId"] == identity.organization_id or data["status"] not in {"Active", "Suspended", "Archived"}:
                     raise ValueError("Cannot suspend your own organization; use Active, Suspended or Archived")
@@ -738,9 +551,10 @@ def _domain_handler(domain, event, context):
                 workflows.validate_subcontractor(data, org_id, pk, project_id, existing)
             workflows.validate_transition(identity, resource, existing, data)
             if resource == "payment" and existing.get("billId") and data.get("status") == "Approved" and existing.get("status") != "Approved":
-                updated = workflows.approve_linked_payment(table, existing, data)
+                updated = workflows.approve_linked_payment(table, existing, data, identity)
                 return _response(200, {"success": True, "data": _clean(updated)})
             previous_version = existing.get("version")
+            before = dict(existing)
             existing.update(data)
             existing["updatedAt"] = datetime.now(timezone.utc).isoformat()
             existing["version"] = (previous_version or 0) + 1
@@ -748,7 +562,7 @@ def _domain_handler(domain, event, context):
             options = {"ConditionExpression": condition, "ExpressionAttributeNames": {"#v": "version"}}
             if previous_version is not None:
                 options["ExpressionAttributeValues"] = {":version": previous_version}
-            table.put_item(Item=existing, **options)
+            audit.put(table, identity, existing, before=before, **options)
             return _response(200, {"success": True, "data": _clean(existing)})
         return _error(405, "METHOD_NOT_ALLOWED", "Unsupported request method")
     except AuthorizationError as exc:

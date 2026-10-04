@@ -193,9 +193,11 @@ Resources:
       - DynamoDBCrudPolicy:
           TableName:
             Ref: UsersTable
-      - DynamoDBCrudPolicy:
-          TableName:
-            Ref: AuditEventsTable
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       Events:
         Routes:
           Type: HttpApi
@@ -258,9 +260,11 @@ Resources:
       - DynamoDBCrudPolicy:
           TableName:
             Ref: ProjectsTable
-      - DynamoDBCrudPolicy:
-          TableName:
-            Ref: AuditEventsTable
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       Events:
         Root:
           Type: HttpApi
@@ -281,6 +285,11 @@ Resources:
     Properties:
       Handler: handlers.consolidated.project_commercial_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       - DynamoDBReadPolicy:
           TableName:
             Ref: OrganizationsTable
@@ -360,6 +369,11 @@ Resources:
       Policies:
       - Statement:
         - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+      - Statement:
+        - Effect: Allow
           Action: dynamodb:ConditionCheckItem
           Resource:
             Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SettingsTable}
@@ -398,6 +412,11 @@ Resources:
     Properties:
       Handler: handlers.consolidated.field_operations_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       - DynamoDBCrudPolicy:
           TableName:
             Ref: InventoryTable
@@ -429,6 +448,11 @@ Resources:
     Properties:
       Handler: handlers.consolidated.site_control_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       - DynamoDBReadPolicy:
           TableName:
             Ref: OrganizationsTable
@@ -491,6 +515,11 @@ Resources:
       Policies:
       - Statement:
         - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+      - Statement:
+        - Effect: Allow
           Action: textract:AnalyzeExpense
           Resource: '*'
       - S3CrudPolicy:
@@ -542,6 +571,11 @@ Resources:
     Properties:
       Handler: handlers.consolidated.supply_chain_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       - DynamoDBCrudPolicy:
           TableName:
             Ref: MaterialsLogisticsTable
@@ -601,6 +635,11 @@ Resources:
     Properties:
       Handler: handlers.consolidated.finance_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       - DynamoDBReadPolicy:
           TableName:
             Ref: PartiesTable
@@ -693,6 +732,11 @@ Resources:
     Properties:
       Handler: handlers.consolidated.governance_handler
       Policies:
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
       - Statement:
         - Effect: Allow
           Action: dynamodb:ConditionCheckItem

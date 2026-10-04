@@ -3,11 +3,12 @@ import os
 import uuid
 import hashlib
 from datetime import datetime, timezone, date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from common.dynamo import get_table
 from common.authz import SUPERVISOR, OPERATIONS_ADMIN, SUPER_ADMIN, require_role, AuthorizationError
+from common import audit
 
 
 def now():
@@ -46,6 +47,11 @@ def number(value, label, positive=False):
     if not Decimal(value).is_finite() or value < 0 or (positive and value == 0):
         raise ValueError(f"{label} must be {'positive' if positive else 'non-negative'}")
     return value
+
+
+def daily_wage(rate, status, night_shift=False):
+    fraction = {"Present": Decimal("1"), "Half Day": Decimal("0.5"), "Absent": Decimal("0")}[status]
+    return (Decimal(rate) * fraction * (2 if night_shift else 1)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def material_kind(item):
@@ -116,6 +122,40 @@ def validate(identity, resource, method, path, body):
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
 
 
+def validate_record(resource, body, existing=None):
+    """Validate complete commercial state on both creates and partial updates."""
+    merged = {**(existing or {}), **body}
+    if resource == "boq":
+        for field in ("code", "description", "category", "unit"):
+            if not isinstance(merged.get(field), str) or not merged[field].strip():
+                raise ValueError(f"{field} is required")
+        number(merged.get("budgetedQty"), "Budget quantity", True)
+        number(merged.get("rate"), "Unit rate")
+        body["amount"] = merged["budgetedQty"] * merged["rate"]
+    if resource in {"bill", "expense", "payment"}:
+        number(merged.get("grossAmount") if resource == "bill" else merged.get("amount"), "Amount", True)
+    if resource == "bill":
+        payable = number(merged.get("netPayable", merged["grossAmount"]), "Net payable")
+        if payable > merged["grossAmount"]:
+            raise ValueError("Net payable cannot exceed the gross bill amount")
+        if payable < merged.get("paidAmount", 0):
+            raise ValueError("Net payable cannot be below payments already approved")
+    for field in ("date", "startDate", "endDate", "periodFrom", "periodTo", "requiredDate", "targetDate"):
+        if field in body and body[field]:
+            value = body[field]
+            if not isinstance(value, str) or len(value) != 10:
+                raise ValueError(f"{field} must use YYYY-MM-DD")
+            date.fromisoformat(value)
+    for start, end in (("periodFrom", "periodTo"), ("startDate", "endDate")):
+        if merged.get(start) and merged.get(end) and merged[start] > merged[end]:
+            raise ValueError(f"{end} cannot precede {start}")
+    if resource == "project":
+        if "progress" in merged and number(merged["progress"], "Progress") > 100:
+            raise ValueError("Progress must not exceed 100")
+        if merged.get("spent", 0) > merged.get("budget", 0):
+            raise ValueError("Opening spending cannot exceed the project budget")
+
+
 def validate_transition(identity, resource, old, body):
     approval = resource in {"bill", "expense", "payment", "dpr", "material"} or (resource == "subcontractor" and old.get("type") == "Procurement")
     if not approval:
@@ -154,25 +194,48 @@ def in_report_period(item, period):
     return period[0] <= stamp <= period[1]
 
 
-def project_totals(projects, org, period=None):
-    # Preserve explicit historical opening spending, then add posted transactions.
+def posted_spending(org):
+    """One definition of posted spending for portfolio totals and project ledgers."""
     finance = rows(get_table("FINANCE_TABLE"), org=org)
     payroll = rows(get_table("SETTINGS_TABLE"), org=org)
     daily_wages = [r for r in rows(get_table("FIELD_OPERATIONS_TABLE"), org=org) if r.get("entityType") == "daily-wage" and r.get("paymentStatus") == "Paid"]
-    totals = {}
+    result = []
     for item in finance + payroll:
-        if not in_report_period(item, period):
-            continue
         kind, status = item.get("entityType"), str(item.get("status", "")).lower()
         if (kind in {"expense", "payment"} and status == "approved") or (kind == "payroll" and status == "paid"):
-            pid = item.get("projectId")
-            totals[pid] = totals.get(pid, 0) + item.get("amount", 0)
-    for item in daily_wages:
+            result.append(item)
+    return result + daily_wages
+
+
+def project_totals(projects, org, period=None):
+    # Preserve explicit historical opening spending, then add posted transactions.
+    totals = {}
+    for item in posted_spending(org):
         if not in_report_period(item, period):
             continue
-        pid = item["projectId"]
-        totals[pid] = totals.get(pid, 0) + item.get("wage", 0)
+        pid = item.get("projectId")
+        amount = item.get("wage", 0) if item.get("entityType") == "daily-wage" else item.get("amount", 0)
+        totals[pid] = totals.get(pid, 0) + amount
     return [dict(p, spent=(p.get("openingSpent", p.get("spent", 0)) if period is None else 0) + totals.get(p["projectId"], 0)) for p in projects]
+
+
+def spending_ledger(identity, org, pid):
+    require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+    result = []
+    labels = {"expense": "Direct Expense", "payment": "Vendor Payment", "payroll": "Payroll Settlement", "daily-wage": "Daily Wage Payment"}
+    for item in posted_spending(org):
+        if item.get("projectId") != pid:
+            continue
+        kind = item["entityType"]
+        result.append({"id": item["SK"], "source": labels[kind], "date": str(item.get("date") or item.get("paidAt") or item.get("approvedAt") or item.get("createdAt") or "")[:10],
+                       "amount": item.get("wage", 0) if kind == "daily-wage" else item.get("amount", 0),
+                       "description": item.get("description") or item.get("vendorName") or item.get("month") or item.get("labourId") or labels[kind],
+                       "status": "Paid" if kind in {"payroll", "daily-wage"} else "Approved", "projectId": pid})
+    project = get_table("PROJECTS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"PROJECT#{pid}"}, ConsistentRead=True)["Item"]
+    opening = project.get("openingSpent", project.get("spent", 0))
+    if opening:
+        result.append({"id": "opening", "source": "Opening Balance", "date": "", "amount": opening, "description": "Historical opening spending", "status": "Posted", "projectId": pid})
+    return result
 
 
 def approval_queue(org, finance):
@@ -191,11 +254,12 @@ def approval_queue(org, finance):
     return result
 
 
-def approve_linked_payment(table, existing, body):
+def approve_linked_payment(table, existing, body, identity):
     bill_key = {"PK": existing["PK"], "SK": f"BILL#{existing['billId']}"}
     bill = table.get_item(Key=bill_key, ConsistentRead=True).get("Item")
     if not bill or bill.get("status") != "Approved":
         raise ValueError("The linked bill must be approved")
+    validate_record("bill", {}, bill)
     remaining_limit = bill.get("netPayable", bill.get("grossAmount", 0)) - existing["amount"]
     if remaining_limit < 0:
         raise ValueError("Payment exceeds the bill amount")
@@ -203,9 +267,18 @@ def approve_linked_payment(table, existing, body):
     updated = dict(existing, **body)
     updated["version"] = version + 1
     updated["updatedAt"] = now()
+    bill_values = {":amount": existing["amount"], ":approved": "Approved", ":limit": remaining_limit}
+    bill_condition = "#s = :approved AND (attribute_not_exists(paidAmount) OR paidAmount <= :limit)"
+    if "paidAmount" in bill:
+        bill_condition += " AND paidAmount = :prior"
+        bill_values[":prior"] = bill["paidAmount"]
+    else:
+        bill_condition += " AND attribute_not_exists(paidAmount)"
     table.meta.client.transact_write_items(TransactItems=[
         {"Put": {"TableName": table.name, "Item": updated, "ConditionExpression": "#v = :v AND #s = :s", "ExpressionAttributeNames": {"#v": "version", "#s": "status"}, "ExpressionAttributeValues": {":v": version, ":s": existing["status"]}}},
-        {"Update": {"TableName": table.name, "Key": bill_key, "UpdateExpression": "ADD paidAmount :amount", "ConditionExpression": "#s = :approved AND (attribute_not_exists(paidAmount) OR paidAmount <= :limit)", "ExpressionAttributeNames": {"#s": "status"}, "ExpressionAttributeValues": {":amount": existing["amount"], ":approved": "Approved", ":limit": remaining_limit}}},
+        {"Update": {"TableName": table.name, "Key": bill_key, "UpdateExpression": "ADD paidAmount :amount", "ConditionExpression": bill_condition, "ExpressionAttributeNames": {"#s": "status"}, "ExpressionAttributeValues": bill_values}},
+        audit.operation(identity, "payment.approved", existing, updated),
+        audit.operation(identity, "bill.payment-recorded", bill, dict(bill, paidAmount=bill.get("paidAmount", 0) + existing["amount"])),
     ])
     return updated
 
@@ -228,7 +301,7 @@ def labour_list(table, pk, day, roster=False):
         if not roster and allocated_project != pid and not logs:
             continue
         deductions = [r for r in debits if r["labourId"] == wid and r["date"].startswith(day[:7])]
-        gross = sum(r.get("wage", w["rate"] * ({"Present": 1, "Half Day": Decimal("0.5")}.get(r["status"], 0) + bool(r.get("nightShift")))) for r in logs)
+        gross = sum(r.get("wage", daily_wage(r.get("rate", w["rate"]), r["status"], bool(r.get("nightShift")))) for r in logs)
         paid = sum(r.get("wage", 0) for r in logs if r.get("paymentStatus") == "Paid")
         result.append(dict(clean(w), status=current.get("status", "Absent"), nightShift=current.get("nightShift", False),
                            attendanceRecorded=bool(current), paymentStatus=current.get("paymentStatus", "Not paid"),
@@ -237,7 +310,7 @@ def labour_list(table, pk, day, roster=False):
                            allocationStarted=allocation.get("date") == day and allocation.get("attendanceStarted", False),
                            dailyWage=current.get("wage", w["rate"] if current.get("status") == "Present" else 0),
                            grossWages=gross, dailyPaid=paid, unpaidWages=max(0, gross - paid),
-                           date=day, daysPresent=sum({"Present": 1, "Half Day": Decimal("0.5")}.get(r["status"], 0) for r in logs),
+                           date=day, attendanceVersion=current.get("version", 0), daysPresent=sum({"Present": 1, "Half Day": Decimal("0.5")}.get(r["status"], 0) for r in logs),
                            nightShifts=sum(bool(r.get("nightShift")) for r in logs),
                            advanceDeductions=sum(r["amount"] for r in deductions), deductions=[clean(r) for r in deductions]))
     return result
@@ -278,7 +351,7 @@ def labour(identity, method, body, query, pk, org, pid):
         item = {**key, "labourAttendanceId": wid, "name": body["name"], "rate": rate, "type": body.get("type", "Skilled"),
                 "bankName": body.get("bankName", ""), "accNo": body.get("accNo", ""), "entityType": "worker", "orgId": org,
                 "projectId": pid, "createdAt": now(), "createdBy": identity.user_id}
-        table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK)")
+        audit.put(table, identity, item, ConditionExpression="attribute_not_exists(PK)")
         return clean(item)
     if not worker:
         worker = next((w for w in rows(table, org=org) if w.get("entityType") == "worker" and w.get("labourAttendanceId") == wid), None)
@@ -302,6 +375,7 @@ def labour(identity, method, body, query, pk, org, pid):
         table.meta.client.transact_write_items(TransactItems=[
             {"ConditionCheck": {"TableName": get_table("SETTINGS_TABLE").name, "Key": {"PK": target_pk, "SK": f"PAYROLL#{day[:7]}"}, "ConditionExpression": "attribute_not_exists(PK)"}},
             {"Put": {"TableName": table.name, "Item": item, "ConditionExpression": "attribute_not_exists(attendanceStarted)"}},
+            audit.operation(identity, "worker.allocated", after=item),
         ])
         return clean(item)
     cycle = get_table("SETTINGS_TABLE").get_item(Key={"PK": pk, "SK": f"PAYROLL#{day[:7]}"}, ConsistentRead=True).get("Item")
@@ -318,6 +392,7 @@ def labour(identity, method, body, query, pk, org, pid):
             {"ConditionCheck": {"TableName": get_table("SETTINGS_TABLE").name, "Key": {"PK": pk, "SK": f"PAYROLL#{day[:7]}"}, "ConditionExpression": "attribute_not_exists(PK)"}},
             {"Put": {"TableName": table.name, "Item": item, "ConditionExpression": "attribute_not_exists(PK)"}},
             {"Update": {"TableName": table.name, "Key": {"PK": pk, "SK": f"MONTH#{day[:7]}"}, "UpdateExpression": "ADD revision :one", "ExpressionAttributeValues": {":one": 1}}},
+            audit.operation(identity, "worker.deduction-created", after=item),
         ])
         return clean(item)
     if operation != "attendance" or body.get("status") not in {"Present", "Half Day", "Absent"}:
@@ -325,6 +400,8 @@ def labour(identity, method, body, query, pk, org, pid):
     night_shift = body.get("nightShift", False)
     if not isinstance(night_shift, bool):
         raise ValueError("Night shift must be true or false")
+    if body["status"] == "Absent" and night_shift:
+        raise ValueError("An absent worker cannot have a night shift")
     payment_status = body.get("paymentStatus", "Not paid")
     if payment_status not in {"Paid", "Not paid"}:
         raise ValueError("Select Paid or Not paid")
@@ -334,16 +411,39 @@ def labour(identity, method, body, query, pk, org, pid):
     if not allocation or allocation.get("projectId") != pid:
         raise AuthorizationError("The admin must confirm this worker's project allocation for this date first")
     existing = table.get_item(Key={"PK": pk, "SK": f"DAILY#{wid}#{day}"}, ConsistentRead=True).get("Item", {})
+    version = existing.get("version", 0)
+    expected = body.get("expectedVersion")
+    if expected is not None and (isinstance(expected, bool) or not isinstance(expected, (int, Decimal))):
+        raise ValueError("Attendance changed. Refresh before saving your correction.")
     rate = existing.get("rate", worker["rate"])
     item = {"PK": pk, "SK": f"DAILY#{wid}#{day}", "labourId": wid, "date": day, "status": body["status"],
             "entityType": "daily-wage", "paymentStatus": payment_status, "rate": rate,
-            "wage": (rate if body["status"] == "Present" else (rate * Decimal("0.5") if body["status"] == "Half Day" else 0)) * (Decimal("2") if night_shift and body["status"] != "Absent" else Decimal("1")),
-            "nightShift": night_shift, "orgId": org, "projectId": pid, "updatedAt": now(), "createdBy": identity.user_id}
+            "wage": daily_wage(rate, body["status"], night_shift),
+            "nightShift": night_shift, "orgId": org, "projectId": pid, "updatedAt": now(),
+            "createdAt": existing.get("createdAt", now()), "createdBy": existing.get("createdBy", identity.user_id),
+            "updatedBy": identity.user_id, "version": version + 1}
+    if existing and all(existing.get(field, False if field == "nightShift" else None) == item[field]
+                        for field in ("status", "paymentStatus", "wage", "nightShift")):
+        return clean(existing)
+    if expected is not None and expected != version:
+        raise ValueError("Attendance changed. Refresh before saving your correction.")
+    reason = body.get("correctionReason")
+    if existing.get("paymentStatus") == "Paid":
+        if expected is None or not isinstance(reason, str) or not reason.strip():
+            raise ValueError("A reason and current attendance version are required to correct a paid wage")
+        if len(reason.strip()) > 500:
+            raise ValueError("Correction reason must be at most 500 characters")
+    put_operation = {"TableName": table.name, "Item": item,
+                     "ConditionExpression": "attribute_not_exists(#v)" if "version" not in existing else "#v = :v",
+                     "ExpressionAttributeNames": {"#v": "version"}}
+    if "version" in existing:
+        put_operation["ExpressionAttributeValues"] = {":v": version}
     table.meta.client.transact_write_items(TransactItems=[
         {"Update": {"TableName": table.name, "Key": allocation_key, "UpdateExpression": "SET attendanceStarted = :yes", "ConditionExpression": "projectId = :pid", "ExpressionAttributeValues": {":yes": True, ":pid": pid}}},
         {"ConditionCheck": {"TableName": get_table("SETTINGS_TABLE").name, "Key": {"PK": pk, "SK": f"PAYROLL#{day[:7]}"}, "ConditionExpression": "attribute_not_exists(PK)"}},
-        {"Put": {"TableName": table.name, "Item": item}},
+        {"Put": put_operation},
         {"Update": {"TableName": table.name, "Key": {"PK": pk, "SK": f"MONTH#{day[:7]}"}, "UpdateExpression": "ADD revision :one", "ExpressionAttributeValues": {":one": 1}}},
+        audit.operation(identity, "daily-wage.corrected" if existing else "daily-wage.created", existing or None, item, reason.strip() if isinstance(reason, str) else None),
     ])
     return clean(item)
 
@@ -361,8 +461,8 @@ def stock(identity, method, path, body, pk, org, pid):
     require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
     if method != "POST":
         raise ValueError("Stock movements cannot be edited; record a correcting movement")
-    name = str(body.get("item", body.get("materialName", ""))).strip()
-    unit = str(body.get("unit", "")).strip()
+    name = " ".join(str(body.get("item", body.get("materialName", ""))).split())
+    unit = " ".join(str(body.get("unit", "")).split())
     if not name or not unit:
         raise ValueError("Item and unit are required")
     qty = number(body.get("qty", body.get("quantity")), "Quantity", True)
@@ -418,6 +518,7 @@ def stock(identity, method, path, body, pk, org, pid):
             "ExpressionAttributeNames": {"#s": "status"},
             "ExpressionAttributeValues": {":issued": "issued", ":approved": indent["status"], ":at": now(), ":by": identity.user_id}}})
     # The resource client serializes native Decimal values, including transactions.
+    operations.append(audit.operation(identity, "stock.received" if kind == "grn" else "stock.issued", after=event))
     table.meta.client.transact_write_items(TransactItems=operations)
     return clean(event)
 
@@ -452,13 +553,16 @@ def payroll(identity, method, path, body, pk, pid, org):
         archived = dict(old, SK=f"PAYROLL-HISTORY#{month}#{uuid.uuid4().hex}", entityType="payroll-history", reopenedAt=now(), reopenedBy=identity.user_id)
         table.meta.client.transact_write_items(TransactItems=[
             {"Put": {"TableName": table.name, "Item": archived}},
-            {"Delete": {"TableName": table.name, "Key": key, "ConditionExpression": "#s = :pending", "ExpressionAttributeNames": {"#s": "status"}, "ExpressionAttributeValues": {":pending": "Pending"}}},
+            {"Delete": {"TableName": table.name, "Key": key, "ConditionExpression": "#s = :pending AND createdAt = :created", "ExpressionAttributeNames": {"#s": "status"}, "ExpressionAttributeValues": {":pending": "Pending", ":created": old["createdAt"]}}},
+            audit.operation(identity, "payroll.reopened", old, archived),
         ])
         return {"reopened": True}
     if path.endswith("/staff"):
         if method == "GET":
             return [clean(i) for i in rows(table, pk, "SALARY#")]
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+        if method != "POST":
+            raise ValueError("Use POST to configure a salary")
         employee_id = str(body.get("employeeId", ""))
         employee = get_table("USERS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"USER#{employee_id}"}, ConsistentRead=True).get("Item")
         if not employee or employee.get("orgId") != org or employee.get("status") != "Active":
@@ -470,7 +574,19 @@ def payroll(identity, method, path, body, pk, pid, org):
             raise ValueError("Salary deductions exceed gross salary")
         item = {"PK": pk, "SK": f"SALARY#{employee_id}", "employeeId": employee_id, "name": employee.get("name", employee_id),
                 "orgId": org, "projectId": pid, "entityType": "salary", "updatedAt": now(), **amounts}
-        table.put_item(Item=item)
+        before = table.get_item(Key={"PK": pk, "SK": item["SK"]}, ConsistentRead=True).get("Item")
+        version = (before or {}).get("version")
+        item["version"] = (version or 0) + 1
+        salary_put = {"TableName": table.name, "Item": item,
+                      "ConditionExpression": "attribute_not_exists(#v)" if version is None else "#v = :v",
+                      "ExpressionAttributeNames": {"#v": "version"}}
+        if version is not None:
+            salary_put["ExpressionAttributeValues"] = {":v": version}
+        table.meta.client.transact_write_items(TransactItems=[
+            {"Put": salary_put},
+            {"Update": {"TableName": table.name, "Key": {"PK": pk, "SK": "SALARY-REVISION"}, "UpdateExpression": "ADD revision :one", "ExpressionAttributeValues": {":one": 1}}},
+            audit.operation(identity, "salary.configured", before, item),
+        ])
         return clean(item)
     if method == "GET":
         return [clean(i) for i in rows(table, pk, "PAYROLL#")]
@@ -482,16 +598,21 @@ def payroll(identity, method, path, body, pk, pid, org):
     key = {"PK": pk, "SK": f"PAYROLL#{month}"}
     old = table.get_item(Key=key, ConsistentRead=True).get("Item")
     if path.endswith("/disburse"):
+        if method != "POST":
+            raise ValueError("Use POST to record payroll settlement")
         if not old:
             raise ValueError("Generate and review this payroll cycle first")
+        if body.get("expectedCreatedAt") is not None and body["expectedCreatedAt"] != old["createdAt"]:
+            raise ValueError("Payroll was regenerated. Refresh and review the current cycle before recording payment.")
         if old.get("status") == "Paid":
             return clean(old)
         if not str(body.get("reference", "")).strip():
             raise ValueError("An external payment reference is required")
-        updated = table.update_item(Key=key, UpdateExpression="SET #s = :paid, paymentReference = :ref, paidAt = :at, paidBy = :by",
-            ConditionExpression="#s = :pending", ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":paid": "Paid", ":pending": "Pending", ":ref": body["reference"], ":at": now(), ":by": identity.user_id}, ReturnValues="ALL_NEW")
-        return clean(updated["Attributes"])
+        updated = dict(old, status="Paid", paymentReference=body["reference"].strip(), paidAt=now(), paidBy=identity.user_id)
+        audit.put(table, identity, updated, before=old, action="payroll.settled",
+                  ConditionExpression="#s = :pending AND createdAt = :created", ExpressionAttributeNames={"#s": "status"},
+                  ExpressionAttributeValues={":pending": "Pending", ":created": old["createdAt"]})
+        return clean(updated)
     if method != "POST":
         raise ValueError("Payroll cycles are immutable")
     if old:
@@ -499,13 +620,15 @@ def payroll(identity, method, path, body, pk, pid, org):
     workforce = get_table("FIELD_OPERATIONS_TABLE")
     revision_key = {"PK": pk, "SK": f"MONTH#{month}"}
     revision = workforce.get_item(Key=revision_key, ConsistentRead=True).get("Item", {}).get("revision")
+    salary_revision_key = {"PK": pk, "SK": "SALARY-REVISION"}
+    salary_revision = table.get_item(Key=salary_revision_key, ConsistentRead=True).get("Item", {}).get("revision")
     workers = labour_list(workforce, pk, month + "-01")
     staff = []
     for w in workers:
         gross = w["grossWages"]
         if w["advanceDeductions"] + w["dailyPaid"] > gross:
             raise ValueError(f"Deductions exceed wages for {w['name']}; correct deductions before generating payroll")
-        staff.append({"labourId": w["labourAttendanceId"], "name": w["name"], "rate": w["rate"], "daysPresent": w["daysPresent"],
+        staff.append({"labourId": w["labourAttendanceId"], "name": w["name"], "type": w.get("type", "Labour"), "rate": w["rate"], "daysPresent": w["daysPresent"],
                       "nightShifts": w["nightShifts"], "gross": gross, "deductions": w["advanceDeductions"], "dailyPaid": w["dailyPaid"], "net": gross - w["advanceDeductions"] - w["dailyPaid"]})
     for profile in rows(table, pk, "SALARY#"):
         employee = get_table("USERS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"USER#{profile['employeeId']}"}, ConsistentRead=True).get("Item")
@@ -521,9 +644,15 @@ def payroll(identity, method, path, body, pk, pid, org):
     check = {"TableName": workforce.name, "Key": revision_key, "ConditionExpression": "attribute_not_exists(revision)" if revision is None else "revision = :revision"}
     if revision is not None:
         check["ExpressionAttributeValues"] = {":revision": revision}
+    salary_check = {"TableName": table.name, "Key": salary_revision_key,
+                    "ConditionExpression": "attribute_not_exists(revision)" if salary_revision is None else "revision = :revision"}
+    if salary_revision is not None:
+        salary_check["ExpressionAttributeValues"] = {":revision": salary_revision}
     table.meta.client.transact_write_items(TransactItems=[
         {"Put": {"TableName": table.name, "Item": item, "ConditionExpression": "attribute_not_exists(PK)"}},
         {"ConditionCheck": check},
+        {"ConditionCheck": salary_check},
+        audit.operation(identity, "payroll.generated", after=item),
     ])
     return clean(item)
 
@@ -686,6 +815,11 @@ def handle(identity, domain, resource, method, path, body, query, pk, pid, org, 
         # Reuse a legacy ID if this material was registered before canonical IDs.
         existing = next((i for i in rows(get_table("INVENTORY_TABLE"), pk, "INVENTORY-ITEM#") if catalog_identity(i) == identity_key), None)
         body["itemId"] = existing["itemId"] if existing else hashlib.sha256(__import__('json').dumps(identity_key).encode()).hexdigest()[:24]
+    if resource == "inventory-item" and method in {"POST", "PUT", "PATCH"}:
+        if "reorderLevel" in body:
+            number(body["reorderLevel"], "Reorder level")
+        if set(body) & {"quantity", "totalStock", "centralStock", "deployedStock"}:
+            raise ValueError("Stock balances are maintained by receipts and issue vouchers")
     if resource == "vendor" and method in {"POST", "PUT", "PATCH"}:
         if "materialsSupplied" in body and "materialIds" not in body:
             raise ValueError("Select catalog materials instead of entering material names")
