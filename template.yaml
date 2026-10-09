@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Kinetic ERP v2 — 12 domain Lambdas using 12 externally managed DynamoDB tables
+Description: Kinetic ERP - 11 request handlers using 16 domain tables
 Parameters:
   CognitoUserPoolId:
     Type: String
@@ -10,42 +10,17 @@ Parameters:
     Type: String
     Default: '*'
     Description: Exact frontend HTTPS origin (no trailing slash) or '*'
-  OrganizationsTable:
+  ProjectName:
     Type: String
-    Default: kinetic-v2-organizations
-  UsersTable:
+    Default: kinetic-erp
+    AllowedPattern: '[a-z][a-z0-9-]{1,29}'
+    MaxLength: 30
+  Environment:
     Type: String
-    Default: kinetic-v2-users
-  ProjectsTable:
-    Type: String
-    Default: kinetic-v2-projects
-  PartiesTable:
-    Type: String
-    Default: kinetic-v2-parties
-  FieldOperationsTable:
-    Type: String
-    Default: kinetic-v2-field-operations
-  SiteControlTable:
-    Type: String
-    Default: kinetic-v2-site-control
-  MaterialsLogisticsTable:
-    Type: String
-    Default: kinetic-v2-materials-logistics
-  DocumentControlTable:
-    Type: String
-    Default: kinetic-v2-document-control
-  InventoryTable:
-    Type: String
-    Default: kinetic-v2-inventory
-  FinanceTable:
-    Type: String
-    Default: kinetic-v2-finance
-  SettingsTable:
-    Type: String
-    Default: kinetic-v2-settings
-  AuditEventsTable:
-    Type: String
-    Default: kinetic-v2-audit-events
+    Default: dev
+    AllowedValues:
+    - dev
+    - prod
 Globals:
   Function:
     CodeUri: ./
@@ -56,35 +31,48 @@ Globals:
     Environment:
       Variables:
         ORGANIZATIONS_TABLE:
-          Ref: OrganizationsTable
+          Fn::Sub: ${ProjectName}-organizations-${Environment}
         USERS_TABLE:
-          Ref: UsersTable
+          Fn::Sub: ${ProjectName}-users-${Environment}
         PROJECTS_TABLE:
-          Ref: ProjectsTable
+          Fn::Sub: ${ProjectName}-projects-${Environment}
         PARTIES_TABLE:
-          Ref: PartiesTable
+          Fn::Sub: ${ProjectName}-vendors-contractors-${Environment}
         FIELD_OPERATIONS_TABLE:
-          Ref: FieldOperationsTable
+          Fn::Sub: ${ProjectName}-site-activity-${Environment}
         SITE_CONTROL_TABLE:
-          Ref: SiteControlTable
-        MATERIALS_LOGISTICS_TABLE:
-          Ref: MaterialsLogisticsTable
+          Fn::Sub: ${ProjectName}-site-control-${Environment}
         DOCUMENT_CONTROL_TABLE:
-          Ref: DocumentControlTable
+          Fn::Sub: ${ProjectName}-documents-${Environment}
         INVENTORY_TABLE:
-          Ref: InventoryTable
+          Fn::Sub: ${ProjectName}-inventory-${Environment}
         FINANCE_TABLE:
-          Ref: FinanceTable
+          Fn::Sub: ${ProjectName}-finance-${Environment}
         SETTINGS_TABLE:
-          Ref: SettingsTable
+          Fn::Sub: ${ProjectName}-settings-${Environment}
         AUDIT_EVENTS_TABLE:
-          Ref: AuditEventsTable
+          Fn::Sub: ${ProjectName}-audit-events-${Environment}
         DOCUMENTS_BUCKET:
           Ref: DocumentsBucket
         COGNITO_CLIENT_ID:
           Ref: CognitoClientId
         COGNITO_USER_POOL_ID:
           Ref: CognitoUserPoolId
+        WORKFORCE_TABLE:
+          Fn::Sub: ${ProjectName}-workforce-${Environment}
+        PAYROLL_TABLE:
+          Fn::Sub: ${ProjectName}-payroll-${Environment}
+        TRANSPORT_TABLE:
+          Fn::Sub: ${ProjectName}-transport-${Environment}
+        REPORTING_TABLE:
+          Fn::Sub: ${ProjectName}-reporting-${Environment}
+        MATERIALS_TABLE:
+          Fn::Sub: ${ProjectName}-materials-${Environment}
+    Tags:
+      Application:
+        Ref: ProjectName
+      Environment:
+        Ref: Environment
 Resources:
   DocumentsBucket:
     Type: AWS::S3::Bucket
@@ -102,15 +90,23 @@ Resources:
         CorsRules:
         - AllowedOrigins:
           - Ref: FrontendOrigin
-          AllowedMethods: [GET, POST]
-          AllowedHeaders: ['*']
+          AllowedMethods:
+          - GET
+          - POST
+          AllowedHeaders:
+          - '*'
           MaxAge: 300
+      LifecycleConfiguration:
+        Rules:
+        - Id: ExpireReportExports
+          Status: Enabled
+          Prefix: exports/
+          ExpirationInDays: 30
   KineticHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
-      StageName: prod
-      # API Gateway owns preflight responses and CORS headers for every route.
-      # Do not add Lambda OPTIONS events or an authenticated $default route.
+      StageName:
+        Ref: Environment
       CorsConfiguration:
         AllowOrigins:
         - Ref: FrontendOrigin
@@ -138,6 +134,8 @@ Resources:
               Issuer:
                 Fn::Sub: https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
         DefaultAuthorizer: CognitoJwt
+      Name:
+        Fn::Sub: ${ProjectName}-api-${Environment}
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -145,13 +143,13 @@ Resources:
       Policies:
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       Events:
         Routes:
           Type: HttpApi
@@ -162,6 +160,8 @@ Resources:
             Method: ANY
             Auth:
               Authorizer: CognitoJwt
+      FunctionName:
+        Fn::Sub: ${ProjectName}-auth-${Environment}
   PlatformAdminFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -180,24 +180,30 @@ Resources:
             Fn::Sub: arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - Statement:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
       Events:
         Routes:
           Type: HttpApi
@@ -234,6 +240,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /organizations/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-platform-admin-${Environment}
   ProjectsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -241,30 +249,46 @@ Resources:
       Policies:
       - DynamoDBReadPolicy:
           TableName:
-            Ref: FieldOperationsTable
+            Fn::Sub: ${ProjectName}-site-activity-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: FinanceTable
+            Fn::Sub: ${ProjectName}-finance-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: SettingsTable
+            Fn::Sub: ${ProjectName}-settings-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - Statement:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
+      - DynamoDBReadPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-workforce-${Environment}
+      - DynamoDBReadPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-payroll-${Environment}
+      - DynamoDBReadPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-reporting-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
       Events:
         Root:
           Type: HttpApi
@@ -280,6 +304,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-projects-${Environment}
   ProjectCommercialFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -289,22 +315,32 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: PartiesTable
+            Fn::Sub: ${ProjectName}-vendors-contractors-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-vendors-contractors-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-reporting-${Environment}
       Events:
         BoqRoot:
           Type: HttpApi
@@ -362,6 +398,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/milestones/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-project-commercial-${Environment}
   WorkforceFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -371,27 +409,49 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - Statement:
         - Effect: Allow
           Action: dynamodb:ConditionCheckItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SettingsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-settings-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: SettingsTable
+            Fn::Sub: ${ProjectName}-settings-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: FieldOperationsTable
+            Fn::Sub: ${ProjectName}-site-activity-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-workforce-${Environment}
+      - DynamoDBReadPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-payroll-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-reporting-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-payroll-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-workforce-${Environment}
       Events:
         Attendance:
           Type: HttpApi
@@ -407,6 +467,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /supervisor/labour/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-workforce-${Environment}
   FieldOperationsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -416,25 +478,39 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: InventoryTable
+            Fn::Sub: ${ProjectName}-inventory-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: FieldOperationsTable
+            Fn::Sub: ${ProjectName}-site-activity-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: MaterialsLogisticsTable
+            Fn::Sub: ${ProjectName}-materials-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-transport-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-inventory-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-reporting-${Environment}
       Events:
         Routes:
           Type: HttpApi
@@ -443,6 +519,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /supervisor/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-site-activity-${Environment}
   SiteControlFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -452,19 +530,25 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: SiteControlTable
+            Fn::Sub: ${ProjectName}-site-control-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
       Events:
         IssuesRoot:
           Type: HttpApi
@@ -508,6 +592,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/equipment/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-site-control-${Environment}
   DocumentControlFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -517,7 +603,7 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - Statement:
         - Effect: Allow
           Action: textract:AnalyzeExpense
@@ -527,16 +613,22 @@ Resources:
             Ref: DocumentsBucket
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: DocumentControlTable
+            Fn::Sub: ${ProjectName}-documents-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
       Events:
         DrawingsRoot:
           Type: HttpApi
@@ -566,6 +658,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/documents/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-documents-${Environment}
   SupplyChainFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -575,25 +669,36 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: MaterialsLogisticsTable
+            Fn::Sub: ${ProjectName}-materials-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: InventoryTable
+            Fn::Sub: ${ProjectName}-inventory-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: PartiesTable
+            Fn::Sub: ${ProjectName}-vendors-contractors-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-materials-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-inventory-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-vendors-contractors-${Environment}
       Events:
         VendorsRoot:
           Type: HttpApi
@@ -630,6 +735,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /warehouse/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-inventory-vendors-${Environment}
   FinanceFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -639,22 +746,42 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: PartiesTable
+            Fn::Sub: ${ProjectName}-vendors-contractors-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: FinanceTable
+            Fn::Sub: ${ProjectName}-finance-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-reporting-${Environment}
+      - DynamoDBReadPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-inventory-${Environment}
+      - DynamoDBReadPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-documents-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-vendors-contractors-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-inventory-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-documents-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-finance-${Environment}
       Events:
         GlobalExpenses:
           Type: HttpApi
@@ -670,7 +797,6 @@ Resources:
               Ref: KineticHttpApi
             Path: /expenses/{proxy+}
             Method: ANY
-
         PaymentsRoot:
           Type: HttpApi
           Properties:
@@ -727,6 +853,8 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/expenses/{proxy+}
             Method: ANY
+      FunctionName:
+        Fn::Sub: ${ProjectName}-finance-${Environment}
   GovernanceFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -736,36 +864,58 @@ Resources:
         - Effect: Allow
           Action: dynamodb:PutItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-audit-events-${Environment}
       - Statement:
         - Effect: Allow
           Action: dynamodb:ConditionCheckItem
           Resource:
-            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${FieldOperationsTable}
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-site-activity-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: MaterialsLogisticsTable
+            Fn::Sub: ${ProjectName}-materials-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: PartiesTable
+            Fn::Sub: ${ProjectName}-vendors-contractors-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: FieldOperationsTable
+            Fn::Sub: ${ProjectName}-site-activity-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: OrganizationsTable
+            Fn::Sub: ${ProjectName}-organizations-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: UsersTable
+            Fn::Sub: ${ProjectName}-users-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: ProjectsTable
+            Fn::Sub: ${ProjectName}-projects-${Environment}
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: SettingsTable
+            Fn::Sub: ${ProjectName}-settings-${Environment}
       - DynamoDBReadPolicy:
           TableName:
-            Ref: FinanceTable
+            Fn::Sub: ${ProjectName}-finance-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-payroll-${Environment}
+      - DynamoDBReadPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-workforce-${Environment}
+      - DynamoDBCrudPolicy:
+          TableName:
+            Fn::Sub: ${ProjectName}-reporting-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-workforce-${Environment}
+      - Statement:
+        - Effect: Allow
+          Action: dynamodb:ConditionCheckItem
+          Resource:
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
+          - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-payroll-${Environment}
       Events:
         PayrollRoot:
           Type: HttpApi
@@ -773,7 +923,7 @@ Resources:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payroll
-            Method: ANY
+            Method: GET
         PayrollRoutes:
           Type: HttpApi
           Properties:
@@ -788,13 +938,6 @@ Resources:
               Ref: KineticHttpApi
             Path: /dashboard/{proxy+}
             Method: ANY
-        Reports:
-          Type: HttpApi
-          Properties:
-            ApiId:
-              Ref: KineticHttpApi
-            Path: /reports/{proxy+}
-            Method: ANY
         Settings:
           Type: HttpApi
           Properties:
@@ -802,28 +945,27 @@ Resources:
               Ref: KineticHttpApi
             Path: /settings
             Method: ANY
-  MaintenanceJobsFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers.consolidated.maintenance_handler
-      Policies:
-      - DynamoDBReadPolicy:
-          TableName:
-            Ref: OrganizationsTable
-      - DynamoDBReadPolicy:
-          TableName:
-            Ref: UsersTable
-      - DynamoDBReadPolicy:
-          TableName:
-            Ref: ProjectsTable
-      - DynamoDBReadPolicy:
-          TableName:
-            Ref: AuditEventsTable
+        GeneratePayroll:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payroll
+            Method: POST
+        ExecutiveReport:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /reports/executive
+            Method: GET
+      FunctionName:
+        Fn::Sub: ${ProjectName}-payroll-reporting-settings-${Environment}
 Outputs:
   KineticHttpApiUrl:
     Value:
-      Fn::Sub: https://${KineticHttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+      Fn::Sub: https://${KineticHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
   ConsolidatedLambdaCount:
-    Value: '12'
+    Value: '11'
   ExternalTableCount:
-    Value: '12'
+    Value: '16'

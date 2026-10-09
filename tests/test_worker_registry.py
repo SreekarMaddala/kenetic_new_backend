@@ -1,3 +1,4 @@
+from test_security_workflows import ADMIN_B, ORG_A, ORG_B, PROJECT_A
 from test_security_workflows import database, event, data
 from test_feature_workflows import call, SITE
 from handlers import consolidated as api
@@ -12,11 +13,11 @@ def test_register_without_project_and_allocate_later(database):
     }))
     wid = worker["labourAttendanceId"]
     assert worker["projectId"] is None
-    assert get_table("FIELD_OPERATIONS_TABLE").get_item(Key={
-        "PK": "ORG#ORG-A", "SK": f"LABOUR-ATTENDANCE#{wid}",
+    assert get_table("WORKFORCE_TABLE").get_item(Key={
+        "PK": f"ORG#{ORG_A}", "SK": f"WORKER#{wid}",
     }).get("Item")
     assert [w["labourAttendanceId"] for w in data(call(api.workforce_handler, PATH))] == [wid]
-    query = {"projectId": "P-A", "date": "2026-09-01"}
+    query = {"projectId": PROJECT_A, "date": "2026-09-01"}
     assert data(call(api.workforce_handler, PATH, query=query, **SITE)) == []
     roster = data(call(api.workforce_handler, PATH, query=dict(query, roster="true")))
     assert roster[0]["labourAttendanceId"] == wid
@@ -30,9 +31,9 @@ def test_register_without_project_and_allocate_later(database):
 def test_registry_is_organization_scoped_and_admin_only(database):
     body = {"operation": "register", "name": "Worker", "rate": 800}
     data(call(api.workforce_handler, PATH, "POST", body))
-    assert data(call(api.workforce_handler, PATH, sub="admin-b", org="ORG-B")) == []
-    assert call(api.workforce_handler, PATH, query={"orgId": "ORG-B"})["statusCode"] == 403
-    assert call(api.workforce_handler, PATH, "POST", dict(body, orgId="ORG-B"))["statusCode"] == 403
+    assert data(call(api.workforce_handler, PATH, sub=ADMIN_B, org=ORG_B)) == []
+    assert call(api.workforce_handler, PATH, query={"orgId": ORG_B})["statusCode"] == 403
+    assert call(api.workforce_handler, PATH, "POST", dict(body, orgId=ORG_B))["statusCode"] == 403
     assert call(api.workforce_handler, PATH, **SITE)["statusCode"] >= 400
     assert call(api.workforce_handler, PATH, "POST", body, **SITE)["statusCode"] >= 400
     assert call(api.workforce_handler, PATH, "POST", {"operation": "allocate"})["statusCode"] == 400

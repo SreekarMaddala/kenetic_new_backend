@@ -26,6 +26,7 @@ class Identity:
     user_id: str
     organization_id: str
     roles: frozenset[str]
+    cognito_sub: str = ''
 
     def has_any_role(self, roles: Iterable[str]) -> bool:
         return bool(self.roles.intersection(roles))
@@ -84,6 +85,8 @@ def active_identity(event):
     from common.dynamo import get_table
 
     identity = identity_from_event(event)
+    from common.model import employee_id
+    identity = Identity(employee_id(identity.user_id), identity.organization_id, identity.roles, identity.user_id)
     profile = get_table("USERS_TABLE").get_item(
         Key={"PK": f"ORG#{identity.organization_id}", "SK": f"USER#{identity.user_id}"},
         ConsistentRead=True,
@@ -92,6 +95,8 @@ def active_identity(event):
             or profile.get("orgId") != identity.organization_id
             or profile.get("role") not in identity.roles):
         raise AuthorizationError("Your account is inactive or its permissions have changed. Sign in again or contact your administrator.")
+    if (profile.get('cognitoSub') != identity.cognito_sub):
+        raise AuthorizationError('The account login identity does not match its profile')
     organization = get_table("ORGANIZATIONS_TABLE").get_item(
         Key={"PK": f"ORG#{identity.organization_id}", "SK": f"ORGANIZATION#{identity.organization_id}"},
         ConsistentRead=True,

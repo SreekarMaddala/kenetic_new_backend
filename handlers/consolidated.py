@@ -1,27 +1,22 @@
-"""Kinetic ERP v2: direct handlers for the 12 deployed Lambda domains.
+"""Kinetic ERP: direct request handlers for the application's business domains.
 
 There are no per-route Lambda modules. Each entry point resolves its resource,
 enforces the caller's tenant, and stores domain records as PK/SK items.
 """
 
 import json
-import os
 import re
-import uuid
 import logging
 from decimal import Decimal
 from datetime import datetime, timezone
 
-from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-from common.authz import (
-    OPERATIONS_ADMIN, SUPER_ADMIN, SUPERVISOR, AuthorizationError,
-    active_identity, require_role, require_organization,
-)
-from common.dynamo import get_table, convert_floats_to_decimals
-from common.accounts import create_account, update_account, resend_invitation
-from common import workflows, audit
+from common.authz import AuthorizationError, OPERATIONS_ADMIN, SUPERVISOR, SUPER_ADMIN, active_identity, require_organization, require_role
+from common.dynamo import convert_floats_to_decimals, get_table
+from common.accounts import create_account, resend_invitation, update_account
+from common import audit, contracts, finance, inventory, model, pagination, reporting, storage, workflow_helpers, workflow_validation, workflows, workforce
 
 
 DOMAIN_CONFIG = {
@@ -176,14 +171,20 @@ def _id_field(resource):
 
 
 def _table_for(domain, resource):
+    if resource in {'attendance', 'labour-attendance'}:
+        return get_table('WORKFORCE_TABLE')
+    if resource == 'payroll':
+        return get_table('PAYROLL_TABLE')
+    if resource == 'logistics-trip':
+        return get_table('TRANSPORT_TABLE')
+    if resource == 'material':
+        return get_table('MATERIALS_TABLE')
     if resource == "user":
         return get_table("USERS_TABLE")
     if domain == "project-commercial" and resource == "subcontractor":
         return get_table("PARTIES_TABLE")
     if domain == "supply-chain" and resource == "vendor":
         return get_table("PARTIES_TABLE")
-    if domain == "field-operations" and resource in {"material", "logistics-trip"}:
-        return get_table("MATERIALS_LOGISTICS_TABLE")
     return get_table(DOMAIN_CONFIG[domain][0])
 
 
@@ -191,8 +192,11 @@ def _pk(identity, path, resource, data, query=None):
     query = query or {}
     org_id = query.get("orgId") or data.get("orgId") or identity.organization_id
     require_organization(identity, org_id)
+    model.validate_id('organization', org_id)
     project_id = _project_id(path) or data.get("projectId")
     project_id = project_id or query.get("projectId")
+    if (project_id):
+        model.validate_id('project', project_id)
     if resource == "project":
         return f"ORG#{org_id}", project_id
     if project_id:
@@ -213,13 +217,13 @@ def _pk(identity, path, resource, data, query=None):
 
 
 def _clean(item):
-    return {key: value for key, value in item.items() if key not in {"PK", "SK", "entityType", "cognitoUsername"}}
+    return {key: value for key, value in item.items() if key not in {"PK", "SK", "OrgPK", "OrgSK", "DirectoryPK", "DirectorySK", "ApprovalPK", "ApprovalSK", "entityType", "cognitoUsername", "cognitoSub"}}
 
 
-def _all_items(table, operation="query", **kwargs):
+def _all_items(table, **kwargs):
     items = []
     while True:
-        page = getattr(table, operation)(**kwargs)
+        page = table.query(**kwargs)
         items.extend(page.get("Items", []))
         if not page.get("LastEvaluatedKey"):
             return items
@@ -228,6 +232,13 @@ def _all_items(table, operation="query", **kwargs):
 
 def _check_route(domain, path, method):
     """Greedy API Gateway routes must not turn unknown URLs into arbitrary CRUD."""
+    if domain == 'governance' and re.match(r'/projects/[^/]+/payroll(?:/|$)', path):
+        match = re.fullmatch(r'/projects/[^/]+/payroll(?:/(me|staff|disburse|\d{4}-(?:0[1-9]|1[0-2])))?', path)
+        if not match:
+            return False
+        operation = match.group(1)
+        methods = {None: {'GET', 'POST'}, 'me': {'GET'}, 'staff': {'GET', 'POST'}, 'disburse': {'POST'}}
+        return method in methods.get(operation, {'DELETE'})
     if domain == "projects" and method == "GET" and re.fullmatch(r"/projects/[^/]+/spending", path):
         return True
     roots = {
@@ -248,12 +259,12 @@ def _check_route(domain, path, method):
         ("platform-admin", "/super-admin/metrics", "GET"),
     }:
         return True
-    suffix = r"(?:/[^/]+(?:/(?:status|invitation|download|extract))?)?"
+    suffix = r"(?:/[^/]+(?:/(?:status|invitation|download|extract|reverse))?)?"
     return bool(re.fullmatch(roots[domain] + suffix, path)) and method in {"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 
 def _validate_data(resource, data, updating=False):
-    immutable = {"PK", "SK", "entityType", "createdAt", "updatedAt", "createdBy", "cognitoUsername", "version", "recordKind", "approvedBy", "approvedAt", "paidAmount"}
+    immutable = {"PK", "SK", "OrgPK", "OrgSK", "DirectoryPK", "DirectorySK", "ApprovalPK", "ApprovalSK", "cognitoSub", "entityType", "createdAt", "updatedAt", "createdBy", "cognitoUsername", "version", "recordKind", "approvedBy", "approvedAt", "paidAmount"}
     if updating:
         immutable |= {"orgId", "projectId", _id_field(resource), "storageKey"}
     if set(data) & immutable:
@@ -273,20 +284,12 @@ def _validate_data(resource, data, updating=False):
 
 def _validate_assignments(data, org_id):
     users_table = get_table("USERS_TABLE")
-    for user_id in data.get("supervisorIds", []):
-        if not user_id:
-            continue
-        profile = users_table.get_item(
-            Key={"PK": f"ORG#{org_id}", "SK": f"USER#{user_id}"}, ConsistentRead=True,
-        ).get("Item")
+    ids = [user_id for user_id in data.get("supervisorIds", []) if user_id]
+    lookup = workflow_helpers._batch_get(users_table, [{"PK": f"ORG#{org_id}", "SK": f"USER#{user_id}"} for user_id in ids])
+    for user_id in ids:
+        key = (f"ORG#{org_id}", f"USER#{user_id}")
+        profile = lookup.get(key)
 
-        if not profile:
-            items = users_table.query(
-                KeyConditionExpression=Key("PK").eq(f"ORG#{org_id}"),
-                FilterExpression=Attr("employeeId").eq(user_id) | Attr("email").eq(user_id) | Attr("id").eq(user_id) | Attr("sub").eq(user_id),
-            ).get("Items", [])
-            if items:
-                profile = items[0]
 
         if not profile:
             raise ValueError("Assignments must reference active supervisors in this organization")
@@ -320,7 +323,7 @@ def _attendance(identity, table, pk, project_id, org_id, path, method, body):
     key = {"PK": pk, "SK": f"ATTENDANCE#{record_id}"}
     if method == "POST" and path.endswith("/check-in"):
         location = _attendance_location(body)
-        item = {**key, "attendanceId": record_id, "entityType": "attendance", "orgId": org_id,
+        item = {**key, "attendanceId": (model.new_id('attendance', f'{org_id}|{project_id}|{record_id}')), "entityType": "attendance", "orgId": org_id,
                 "projectId": project_id, "supervisorId": identity.user_id, "createdBy": identity.user_id,
                 "date": now.date().isoformat(), "checkIn": now.isoformat(), "createdAt": now.isoformat(),
                 "checkInLocation": {**location, "recordedAt": now.isoformat()}}
@@ -345,6 +348,62 @@ def _attendance(identity, table, pk, project_id, org_id, path, method, body):
     return _error(405, "METHOD_NOT_ALLOWED", "Unsupported attendance operation")
 
 
+def _collection_page(identity, table, resource, path, query, pk, org):
+    prefix = resource.upper() + '#'
+    directory = None
+    query_pk = pk
+    if resource in {'organization', 'user'} and SUPER_ADMIN in identity.roles and not query.get('orgId'):
+        directory, query_pk = 'DIRECTORY#' + resource, None
+    elif resource in {'expense', 'payment'} and '#PROJECT#' not in pk:
+        query_pk, prefix = None, resource + '#'
+    elif resource == 'logistics-trip':
+        query_pk, prefix = None, resource + '#'
+    elif resource == 'warehouse-event' or (resource == 'material' and ('/grn' in path or '/stock' in path)):
+        table = get_table('INVENTORY_TABLE')
+        if path.endswith('/stock'):
+            prefix = 'BALANCE#'
+        else:
+            query_pk = 'ORG#' + org
+            prefix = 'WAREHOUSE-ISSUE-VOUCHERS#' if 'issue-vouchers' in path else 'WAREHOUSE-GRN#'
+    scope = [identity.user_id, org, path, sorted((k, v) for k, v in query.items() if k not in {'cursor', 'limit'})]
+    items, meta = pagination.page(table, query, scope, pk=query_pk, prefix=prefix, org=None if directory else org, directory=directory)
+    if not directory:
+        items = [item for item in items if item.get('orgId') == org]
+    if resource == 'material' and '/indents' in path:
+        items = [item for item in items if workflow_helpers.material_kind(item) == 'indents']
+    if resource == 'logistics-trip':
+        items = [item for item in items if workflow_helpers.logistics_visible(identity, item) and (not query.get('projectId') or item.get('tripType') == 'vehicle_registration' or item.get('projectId') == query['projectId'])]
+    if resource == 'project':
+        if SUPERVISOR in identity.roles:
+            items = [item for item in items if identity.user_id in item.get('supervisorIds', [])]
+        items = reporting.project_totals(items, org)
+    if path.endswith('/stock'):
+        items = [dict(item, materialId=item['itemId'], stock=item.get('quantity', 0), totalStock=item.get('quantity', 0)) for item in items]
+    if path.startswith('/supervisor/') and resource in {'warehouse-event', 'material'} and '/grn' in path:
+        items = [item for item in items if item.get('targetProjectId') == pk.split('#PROJECT#')[-1]]
+    if resource == 'inventory-item' and query.get('catalog') != 'true':
+        for item in items:
+            key = item['itemId']
+            central = table.get_item(Key={'PK': pk, 'SK': 'BALANCE#' + key}, ConsistentRead=True).get('Item', {}).get('quantity', 0)
+            total = table.get_item(Key={'PK': pk, 'SK': 'TOTAL#' + key}, ConsistentRead=True).get('Item', {}).get('quantity', 0)
+            item.update(centralStock=central, totalStock=total, deployedStock=total - central)
+    return _response(200, {'success': True, 'data': [_clean(item) for item in items], 'pagination': meta})
+
+
+def _directory_rows(table, resource):
+    cursor = None
+    result = []
+    while True:
+        query = {'limit': '100'}
+        if cursor:
+            query['cursor'] = cursor
+        items, meta = pagination.page(table, query, ['platform-metrics', resource], directory='DIRECTORY#' + resource)
+        result.extend(items)
+        cursor = meta['nextCursor']
+        if not cursor:
+            return result
+
+
 def _domain_handler(domain, event, context):
     try:
         identity = active_identity(event)
@@ -365,59 +424,68 @@ def _domain_handler(domain, event, context):
             require_role(identity, SUPER_ADMIN)
         table = _table_for(domain, resource)
         query = event.get("queryStringParameters") or {}
+        contracts.validate(resource, path, method, data)
+        request_data = dict(data)
         pk, project_id = _pk(identity, path, resource, data, query)
         org_id = query.get("orgId") or data.get("orgId") or identity.organization_id
         record_id = _item_id(path, resource)
+        if (method == 'GET' and resource == 'labour-attendance'):
+            from common import worker_views
+            if record_id:
+                return _response(200, {'success': True, 'data': worker_views.profile(identity, table, org_id, project_id, record_id, query)})
+            day = str(query.get('date') or workflow_helpers.now()[:10])
+            items, meta = pagination.page(table, query, [identity.user_id, org_id, path, project_id, day, query.get('roster')], pk='ORG#' + org_id, prefix='WORKER#')
+            if project_id:
+                roster = query.get('roster') == 'true'
+                if roster:
+                    require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+                items = workforce.labour_list(table, pk, day, roster, selected_workers=items)
+                if SUPERVISOR in identity.roles:
+                    items = [worker for worker in items if worker['allocatedProjectId'] == project_id]
+            else:
+                require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+            return _response(200, {'success': True, 'data': [_clean(worker_views.attendance_safe(item)) for item in items], 'pagination': meta})
+        if path.endswith('/reverse') and resource in {'expense', 'payment'} and project_id:
+            if method != 'POST':
+                return _error(405, 'METHOD_NOT_ALLOWED', 'Use POST to reverse an approved transaction')
+            existing = table.get_item(Key={'PK': pk, 'SK': f'{resource.upper()}#{record_id}'}, ConsistentRead=True).get('Item')
+            if not existing or existing.get('orgId') != org_id:
+                return _error(404, 'NOT_FOUND', 'Transaction not found')
+            return _response(200, {'success': True, 'data': _clean(finance.reverse_financial(table, identity, resource, existing, data))})
         if domain == "projects" and path.endswith("/spending"):
-            return _response(200, {"success": True, "data": workflows.spending_ledger(identity, org_id, project_id)})
+            return _response(200, {"success": True, "data": reporting.spending_ledger(identity, org_id, project_id)})
+        if (method == 'GET' and (not record_id) and (resource in {'organization', 'user', 'project', 'boq', 'milestone', 'subcontractor', 'dpr', 'material', 'logistics-trip', 'issue', 'inspection', 'equipment', 'document', 'drawing', 'vendor', 'inventory-item', 'warehouse-event', 'bill', 'expense', 'payment'})):
+            return _collection_page(identity, table, resource, path, query, pk, org_id)
         special = workflows.handle(identity, domain, resource, method, path, data, query, pk, project_id, org_id, record_id)
         if special is not None:
             return _response(200, {"success": True, "data": special})
-        workflows.validate(identity, resource, method, path, data)
+        workflow_validation.validate(identity, resource, method, path, data)
         if resource == "attendance":
             _validate_data(resource, data)
             return _attendance(identity, table, pk, project_id, org_id, path, method, data)
         if method == "GET" and path in {"/dashboard/analytics", "/reports/executive"}:
-            period = workflows.report_period(query) if path == "/reports/executive" else None
+            period = reporting.report_period(query) if path == "/reports/executive" else None
             projects = _all_items(get_table("PROJECTS_TABLE"), KeyConditionExpression=Key("PK").eq(f"ORG#{org_id}") & Key("SK").begins_with("PROJECT#"))
-            finance = _all_items(get_table("FINANCE_TABLE"), "scan", FilterExpression=Attr("orgId").eq(org_id))
-            projects = workflows.project_totals(projects, org_id, period)
+            projects = reporting.project_totals(projects, org_id, period)
             if path.endswith("analytics"):
-                approvals = workflows.approval_queue(org_id, finance)
+                approvals = reporting.approval_queue(org_id)
                 result = {"totalProjects": len(projects), "activeProjects": sum(p.get("status") not in {"Completed", "Archived"} for p in projects),
                           "totalBudget": sum(p.get("budget", 0) for p in projects), "totalSpent": sum(p.get("spent", 0) for p in projects),
                           "pendingApprovals": len(approvals), "approvals": approvals}
+                count = get_table('REPORTING_TABLE').get_item(Key={'PK': 'ORG#' + org_id, 'SK': 'SUMMARY#APPROVALS'}, ConsistentRead=True).get('Item', {}).get('amount', 0)
+                result.update(pendingApprovals=count, approvalsLimited=count > len(approvals))
             else:
                 result = {"projectSummaries": [_clean(p) for p in projects],
-                          "totalExpenses": sum(f.get("amount", 0) for f in finance if f.get("entityType") == "expense" and str(f.get("status", "")).lower() == "approved" and workflows.in_report_period(f, period)),
+                          "totalExpenses": (reporting.expense_total(org_id, period)),
                           "generatedAt": datetime.now(timezone.utc).isoformat()}
             return _response(200, {"success": True, "data": result})
         if method == "GET" and path == "/super-admin/metrics":
-            organizations = _all_items(get_table("ORGANIZATIONS_TABLE"), "scan", FilterExpression=Attr("entityType").eq("organization"))
-            users = _all_items(get_table("USERS_TABLE"), "scan", FilterExpression=Attr("entityType").eq("user"))
+            organizations = (_directory_rows(get_table('ORGANIZATIONS_TABLE'), 'organization'))
+            users = (_directory_rows(get_table('USERS_TABLE'), 'user'))
             return _response(200, {"success": True, "data": {"totalOrganizations": len(organizations), "activeOrganizations": sum(o.get("status") == "Active" for o in organizations), "totalEmployees": len(users), "activeEmployees": sum(u.get("status") == "Active" for u in users)}})
 
         if resource == "setting":
             record_id = "global"
-
-        if method == "GET" and not record_id:
-            if resource in {"organization", "user"} and SUPER_ADMIN in identity.roles and not query.get("orgId"):
-                items = _all_items(table, "scan", FilterExpression=Attr("entityType").eq(resource))
-            else:
-                items = _all_items(table, KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with(f"{resource.upper()}#"))
-                items = [item for item in items if item.get("orgId") == org_id]
-            if resource == "material":
-                items = [i for i in items if workflows.material_kind(i) == path.split("/")[3]]
-            if resource == "logistics-trip":
-                items = _all_items(table, "scan", FilterExpression=Attr("orgId").eq(org_id))
-                if query.get("projectId"):
-                    items = [i for i in items if i.get("tripType") == "vehicle_registration" or i.get("projectId") == query.get("projectId")]
-                items = [i for i in items if workflows.logistics_visible(identity, i)]
-            if resource == "project":
-                items = workflows.project_totals(items, org_id)
-            if SUPERVISOR in identity.roles and resource == "project":
-                items = [p for p in items if identity.user_id in p.get("supervisorIds", [])]
-            return _response(200, {"success": True, "data": [_clean(item) for item in items]})
 
         if method == "POST":
             if resource == "user":
@@ -434,7 +502,7 @@ def _domain_handler(domain, event, context):
             if record_id:
                 return _error(405, "METHOD_NOT_ALLOWED", "Create records using the collection URL")
             _validate_data(resource, data)
-            workflows.validate_record(resource, data)
+            workflow_validation.validate_record(resource, data)
             if resource in {"bill", "expense", "payment", "dpr"}:
                 data.setdefault("status", "Pending")
             if resource == "material":
@@ -443,11 +511,12 @@ def _domain_handler(domain, event, context):
             if resource == "project":
                 _validate_assignments(data, org_id)
                 if "supervisorIds" in data:
-                    data["supervisor"] = workflows.assignment_names(data["supervisorIds"], org_id)
+                    data["supervisor"] = workflow_helpers.assignment_names(data["supervisorIds"], org_id)
             id_field = _id_field(resource)
-            if data.get("requestId") and not workflows.re_id(str(data["requestId"])):
+            if data.get("requestId") and not workflow_helpers.re_id(str(data["requestId"])):
                 raise ValueError("Invalid requestId")
-            record_id = data.get(id_field) or data.get("requestId") or uuid.uuid4().hex
+            supplied_id = data.get(id_field)
+            record_id = model.validate_id(resource, supplied_id) if supplied_id else model.new_id(resource, data.get('requestId'))
             if resource == "organization":
                 org_id = record_id
                 pk = f"ORG#{org_id}"
@@ -464,10 +533,16 @@ def _domain_handler(domain, event, context):
             if resource == "project":
                 item.setdefault("supervisorIds", [])
                 item.setdefault("spent", 0)
+                item['openingSpent'] = item['spent']
             if data.get("requestId"):
+                digest_data = request_data
+                if resource == 'inventory-item':
+                    digest_data = dict(request_data, name=data['name'].casefold(), unit=data['unit'].casefold())
+                item['requestDigest'] = contracts.fingerprint(digest_data)
                 prior = table.get_item(Key={"PK": pk, "SK": item["SK"]}, ConsistentRead=True).get("Item")
                 if prior:
-                    if any(prior.get(k) != v for k, v in data.items() if k != "status"):
+                    mismatched = prior.get('requestDigest') != item['requestDigest'] if (prior.get('requestDigest')) else any(prior.get(k) != v for k, v in data.items() if k != "status")
+                    if mismatched:
                         raise ValueError("Request ID already used for different data")
                     return _response(200, {"success": True, "data": _clean(prior)})
             audit.put(table, identity, item, ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)")
@@ -499,22 +574,23 @@ def _domain_handler(domain, event, context):
         if existing.get("orgId") != org_id and resource != "organization":
             raise AuthorizationError("Record is not in the selected organization")
         if resource == "logistics-trip":
-            if not workflows.logistics_visible(identity, existing):
+            if not workflow_helpers.logistics_visible(identity, existing):
                 raise AuthorizationError("Supervisors can only access logistics for the current month")
             if existing.get("tripType") == "vehicle_registration" and method != "GET":
                 require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         if SUPERVISOR in identity.roles and resource == "project" and identity.user_id not in existing.get("supervisorIds", []):
             raise AuthorizationError("You are not assigned to this project")
-        if resource == "material" and workflows.material_kind(existing) != path.split("/")[3]:
+        if resource == "material" and workflow_helpers.material_kind(existing) != path.split("/")[3]:
             return _error(404, "NOT_FOUND", "Record not found in this collection")
         if method == "GET":
             if resource == "project":
-                existing = workflows.project_totals([existing], org_id)[0]
+                existing = reporting.project_totals([existing], org_id)[0]
             return _response(200, {"success": True, "data": _clean(existing)})
         if method == "DELETE":
+            return _error(405, 'METHOD_NOT_ALLOWED', 'Archive or deactivate records to preserve references and history')
             if resource in {"user", "organization", "project"}:
                 return _error(405, "METHOD_NOT_ALLOWED", "Disable or archive this record instead of deleting it")
-            table.meta.client.transact_write_items(TransactItems=[
+            storage.transact(table, [
                 {"Delete": {"TableName": table.name, "Key": key, "ConditionExpression": "orgId = :org", "ExpressionAttributeValues": {":org": org_id}}},
                 audit.operation(identity, f"{resource}.deleted", before=existing),
             ])
@@ -528,15 +604,18 @@ def _domain_handler(domain, event, context):
             if resource == "user":
                 return _response(200, {"success": True, "data": _clean(update_account(identity, existing, data))})
             _validate_data(resource, data, updating=True)
-            workflows.validate_record(resource, data, existing)
+            if (resource == 'project' and 'spent' in data):
+                raise ValueError('Spending is derived from posted transactions; record an expense or payment')
+            contracts.validate(resource, path, method, request_data, existing)
+            workflow_validation.validate_record(resource, data, existing)
             if resource == "organization" and "status" in data:
                 if existing["orgId"] == identity.organization_id or data["status"] not in {"Active", "Suspended", "Archived"}:
                     raise ValueError("Cannot suspend your own organization; use Active, Suspended or Archived")
             if resource == "project":
                 _validate_assignments(data, org_id)
                 if "supervisorIds" in data:
-                    data["supervisor"] = workflows.assignment_names(data["supervisorIds"], org_id)
-            if resource == "inventory-item" and workflows.catalog_identity({**existing, **data}) != workflows.catalog_identity(existing):
+                    data["supervisor"] = workflow_helpers.assignment_names(data["supervisorIds"], org_id)
+            if resource == "inventory-item" and inventory.catalog_identity({**existing, **data}) != inventory.catalog_identity(existing):
                 raise ValueError("Material name and unit identify a catalog entry; add a new material instead")
             if resource == "payment":
                 if "status" in data:
@@ -545,13 +624,13 @@ def _domain_handler(domain, event, context):
                     data["status"] = str(data["status"]).title()
                 elif data:
                     merged = {**existing, **data}
-                    workflows.payment_material(merged, org_id, pk)
+                    finance.payment_material(merged, org_id, pk)
                     data.update({k: merged[k] for k in ("vendorName", "material", "materialUnit")})
             if resource == "subcontractor":
-                workflows.validate_subcontractor(data, org_id, pk, project_id, existing)
-            workflows.validate_transition(identity, resource, existing, data)
+                workflow_validation.validate_subcontractor(data, org_id, pk, project_id, existing)
+            workflow_validation.validate_transition(identity, resource, existing, data)
             if resource == "payment" and existing.get("billId") and data.get("status") == "Approved" and existing.get("status") != "Approved":
-                updated = workflows.approve_linked_payment(table, existing, data, identity)
+                updated = finance.approve_linked_payment(table, existing, data, identity)
                 return _response(200, {"success": True, "data": _clean(updated)})
             previous_version = existing.get("version")
             before = dict(existing)
@@ -567,6 +646,8 @@ def _domain_handler(domain, event, context):
         return _error(405, "METHOD_NOT_ALLOWED", "Unsupported request method")
     except AuthorizationError as exc:
         return _error(403, "FORBIDDEN", str(exc))
+    except workflow_helpers.HttpError as exc:
+        return _response(exc.status, exc.payload)
     except ValueError as exc:
         return _error(400, "INVALID_REQUEST", str(exc))
     except ClientError as exc:
@@ -585,7 +666,7 @@ def auth_handler(event, context):
         identity = active_identity(event)
         method, path, _ = _event_parts(event)
         if method == "GET" and path == "/auth/me":
-            return _response(200, {"success": True, "data": {"sub": identity.user_id, "orgId": identity.organization_id, "role": next(iter(identity.roles))}})
+            return _response(200, {"success": True, "data": {"sub": identity.cognito_sub or identity.user_id, "employeeId": identity.user_id, "orgId": identity.organization_id, "role": next(iter(identity.roles))}})
         return _error(404, "NOT_FOUND", "Unknown account operation")
     except AuthorizationError as exc:
         return _error(403, "FORBIDDEN", str(exc))
@@ -604,5 +685,4 @@ def document_control_handler(event, context): return _domain_handler("document-c
 def supply_chain_handler(event, context): return _domain_handler("supply-chain", event, context)
 def finance_handler(event, context): return _domain_handler("finance", event, context)
 def governance_handler(event, context): return _domain_handler("governance", event, context)
-def maintenance_handler(event, context): return _response(204, {})
 def placeholder(event, context): return _error(500, "INVALID_HANDLER", "No Lambda handler was configured")

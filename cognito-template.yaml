@@ -3,12 +3,23 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   Kinetic Construction ERP - Cognito Authentication Resources Stack
 
+Parameters:
+  ProjectName:
+    Type: String
+    Default: kinetic-erp
+    AllowedPattern: '[a-z][a-z0-9-]{1,29}'
+    MaxLength: 30
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
 Resources:
   # ─── Cognito User Pool ────────────────────────────────────────────────────────
   KineticUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: kinetic-erp-user-pool
+      UserPoolName: !Sub '${ProjectName}-auth-${Environment}'
       UsernameAttributes:
         - email
       AutoVerifiedAttributes:
@@ -67,7 +78,7 @@ Resources:
   KineticUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: kinetic-erp-web-client
+      ClientName: !Sub '${ProjectName}-web-client-${Environment}'
       UserPoolId: !Ref KineticUserPool
       GenerateSecret: false
       ReadAttributes: [email, email_verified, name, custom:org_id]

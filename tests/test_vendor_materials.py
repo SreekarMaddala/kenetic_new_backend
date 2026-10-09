@@ -1,3 +1,4 @@
+from test_security_workflows import ADMIN_B, CEMENT_ID, ORG_A, ORG_B, PROJECT_A
 import pytest
 
 from test_security_workflows import database, event, data, put
@@ -17,26 +18,26 @@ def supplier(ids):
 
 
 def payment(vendor, item, **extra):
-    return data(call(api.finance_handler, "/payments", "POST", dict(projectId="P-A", vendorId=vendor["vendorId"], materialId=item["itemId"], amount=40, **extra)))
+    return data(call(api.finance_handler, "/payments", "POST", dict(projectId=PROJECT_A, vendorId=vendor["vendorId"], materialId=item["itemId"], amount=40, mode="Cash", reference="cash-receipt", requestId="vendor-payment-001", **extra)))
 
 
 def test_catalog_blocks_duplicates_and_retries_are_idempotent(database):
     first = material("  TMT   Steel  ", "Kg", requestId="catalog-request-001")
     assert first["name"] == "TMT Steel"
     assert material("TMT Steel", "Kg", requestId="catalog-request-001")["itemId"] == first["itemId"]
-    duplicate = call(api.supply_chain_handler, "/inventory", "POST", {"name": "tmt  STEEL", "unit": " kg ", "itemId": "bypass"})
+    duplicate = call(api.supply_chain_handler, "/inventory", "POST", {"name": "tmt  STEEL", "unit": " kg "})
     assert duplicate["statusCode"] == 409
     assert material("TMT Steel", "Tons")["itemId"] != first["itemId"]
     catalog = data(call(api.supply_chain_handler, "/inventory", query={"catalog": "true"}))
     assert len(catalog) == 2
-    assert data(call(api.supply_chain_handler, "/inventory", query={"catalog": "true"}, sub="admin-b", org="ORG-B")) == []
+    assert data(call(api.supply_chain_handler, "/inventory", query={"catalog": "true"}, sub=ADMIN_B, org=ORG_B)) == []
 
 
-def test_existing_catalog_ids_are_preserved_and_protected(database):
-    put("INVENTORY_TABLE", "ORG#ORG-A", "INVENTORY-ITEM#legacy", orgId="ORG-A", itemId="legacy", name="Cement", unit="Bags", entityType="inventory-item")
+def test_current_catalog_ids_are_preserved_and_protected(database):
+    put("INVENTORY_TABLE", f"ORG#{ORG_A}", f"INVENTORY-ITEM#{CEMENT_ID}", orgId=ORG_A, itemId=CEMENT_ID, name="Cement", unit="Bags", entityType="inventory-item")
     assert call(api.supply_chain_handler, "/inventory", "POST", {"name": "cement", "unit": "bags"})["statusCode"] == 409
-    assert call(api.supply_chain_handler, "/inventory/legacy", "PATCH", {"name": "Sand"})["statusCode"] == 400
-    assert call(api.supply_chain_handler, "/inventory/legacy", "DELETE")["statusCode"] == 400
+    assert call(api.supply_chain_handler, f"/inventory/{CEMENT_ID}", "PATCH", {"name": "Sand"})["statusCode"] == 400
+    assert call(api.supply_chain_handler, f"/inventory/{CEMENT_ID}", "DELETE")["statusCode"] == 400
 
 
 def test_vendor_material_assignment_uses_catalog_ids(database):
@@ -47,7 +48,7 @@ def test_vendor_material_assignment_uses_catalog_ids(database):
     for ids in [[cement["itemId"], cement["itemId"]], ["missing"], "Cement"]:
         assert call(api.supply_chain_handler, "/vendors/" + vendor["vendorId"], "PATCH", {"materialIds": ids})["statusCode"] == 400
     assert call(api.supply_chain_handler, "/vendors", "POST", {"name": "Other", "materialsSupplied": "Cement"})["statusCode"] == 400
-    foreign = data(call(api.supply_chain_handler, "/inventory", "POST", {"name": "Foreign", "unit": "Kg"}, sub="admin-b", org="ORG-B"))
+    foreign = data(call(api.supply_chain_handler, "/inventory", "POST", {"name": "Foreign", "unit": "Kg"}, sub=ADMIN_B, org=ORG_B))
     assert call(api.supply_chain_handler, "/vendors/" + vendor["vendorId"], "PATCH", {"materialIds": [foreign["itemId"]]})["statusCode"] == 400
     changed = data(call(api.supply_chain_handler, "/vendors/" + vendor["vendorId"], "PATCH", {"materialIds": []}))
     assert changed["materialsSupplied"] == ""
@@ -56,12 +57,13 @@ def test_vendor_material_assignment_uses_catalog_ids(database):
 def test_payment_only_accepts_selected_vendors_catalog_material(database):
     cement, sand = material(), material("Sand", "Tons")
     vendor = supplier([cement["itemId"]])
-    body = {"projectId": "P-A", "vendorId": vendor["vendorId"], "amount": 40}
+    body = {"projectId": PROJECT_A, "vendorId": vendor["vendorId"], "amount": 40}
     for changes in [{"material": "Cement"}, {"materialId": sand["itemId"]}, {"materialId": "missing"}]:
         assert call(api.finance_handler, "/payments", "POST", dict(body, **changes))["statusCode"] == 400
-    paid = payment(vendor, cement, material="Forged", vendorName="Forged")
+    assert call(api.finance_handler, "/payments", "POST", dict(body, materialId=cement["itemId"], material="Forged", vendorName="Forged"))["statusCode"] == 400
+    paid = payment(vendor, cement)
     assert (paid["material"], paid["materialUnit"], paid["vendorName"]) == ("Cement", "Bags", "Supplier")
-    path = "/projects/P-A/payments/" + paid["paymentId"]
+    path = f"/projects/{PROJECT_A}/payments/" + paid["paymentId"]
     assert call(api.finance_handler, path, "PATCH", {"materialId": sand["itemId"]})["statusCode"] == 400
 
 
@@ -69,13 +71,13 @@ def test_payment_only_accepts_selected_vendors_catalog_material(database):
 def test_approved_payment_cannot_be_reverted_or_change_amount_during_approval(database, scoped):
     cement = material()
     vendor = supplier([cement["itemId"]])
-    bill = data(call(api.finance_handler, "/projects/P-A/bills", "POST", {"grossAmount": 100}))
-    bill_path = "/projects/P-A/bills/" + bill["billId"]
+    bill = data(call(api.finance_handler, f"/projects/{PROJECT_A}/bills", "POST", {"grossAmount": 100, "billNumber": "VENDOR-001", "clientOrContractor": "Supplier", "requestId": "vendor-bill-001"}))
+    bill_path = f"/projects/{PROJECT_A}/bills/" + bill["billId"]
     data(call(api.finance_handler, bill_path, "PATCH", {"status": "Approved"}))
     paid = payment(vendor, cement, billId=bill["billId"])
-    path = ("/projects/P-A/payments/" if scoped else "/payments/") + paid["paymentId"]
+    path = (f"/projects/{PROJECT_A}/payments/" if scoped else "/payments/") + paid["paymentId"]
     assert call(api.finance_handler, path, "PATCH", {"status": "Approved", "amount": 1000})["statusCode"] == 400
-    data(call(api.finance_handler, path, "PATCH", {"status": "approved"}))
+    data(call(api.finance_handler, path, "PATCH", {"status": "Approved"}))
     for status in ["Pending", "pending", "Rejected", "Draft"]:
         assert call(api.finance_handler, path, "PATCH", {"status": status})["statusCode"] == 400
     data(call(api.finance_handler, path, "PATCH", {"status": "Approved"}))

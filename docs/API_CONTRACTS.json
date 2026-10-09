@@ -1,0 +1,1840 @@
+{
+  "attendance": {
+    "additionalProperties": false,
+    "properties": {
+      "attendanceId": {
+        "entity": "attendance",
+        "pattern": "^att_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "location": {
+        "properties": {
+          "accuracy": {
+            "maximum": 1000000000000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "latitude": {
+            "maximum": 90,
+            "minimum": -90,
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180,
+            "minimum": -180,
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracy"
+        ],
+        "type": "object"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      }
+    },
+    "required": [
+      "location"
+    ],
+    "type": "object"
+  },
+  "bill": {
+    "additionalProperties": false,
+    "properties": {
+      "adjustmentReason": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "billId": {
+        "entity": "bill",
+        "pattern": "^bil_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "billNumber": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "clientOrContractor": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "documentId": {
+        "entity": "document",
+        "pattern": "^doc_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "grossAmount": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "netPayable": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "periodFrom": {
+        "format": "date",
+        "type": "string"
+      },
+      "periodTo": {
+        "format": "date",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "remarks": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "retentionDeduction": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "status": {
+        "enum": [
+          "Draft",
+          "Pending",
+          "Approved",
+          "Rejected"
+        ],
+        "type": "string"
+      },
+      "tdsDeduction": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "type": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "vendorId": {
+        "entity": "vendor",
+        "pattern": "^ven_[0-9a-f]{32}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "billNumber",
+      "clientOrContractor",
+      "grossAmount",
+      "requestId"
+    ],
+    "type": "object"
+  },
+  "boq": {
+    "additionalProperties": false,
+    "properties": {
+      "amount": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "boqId": {
+        "entity": "boq",
+        "pattern": "^boq_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "budgetedQty": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "code": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "rate": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "unit": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "description",
+      "category",
+      "unit",
+      "budgetedQty",
+      "rate"
+    ],
+    "type": "object"
+  },
+  "document": {
+    "additionalProperties": false,
+    "properties": {
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "contentType": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "documentId": {
+        "entity": "document",
+        "pattern": "^doc_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "filename": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "revision": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "size": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "storageKey": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "title": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "storageKey"
+    ],
+    "type": "object"
+  },
+  "dpr": {
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "dprId": {
+        "entity": "dpr",
+        "pattern": "^dpr_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "labourCount": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Draft",
+          "Pending",
+          "Approved",
+          "Rejected"
+        ],
+        "type": "string"
+      },
+      "summary": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "weather": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "date"
+    ],
+    "type": "object"
+  },
+  "drawing": {
+    "additionalProperties": false,
+    "properties": {
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "contentType": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "drawingId": {
+        "entity": "drawing",
+        "pattern": "^dra_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "filename": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "revision": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "size": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "storageKey": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "title": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "storageKey"
+    ],
+    "type": "object"
+  },
+  "equipment": {
+    "additionalProperties": false,
+    "properties": {
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "code": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "equipmentId": {
+        "entity": "equipment",
+        "pattern": "^equ_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "location": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Available",
+          "Deployed",
+          "Maintenance",
+          "Archived"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "code",
+      "location",
+      "category"
+    ],
+    "type": "object"
+  },
+  "expense": {
+    "additionalProperties": false,
+    "properties": {
+      "amount": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "expenseId": {
+        "entity": "expense",
+        "pattern": "^exp_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Draft",
+          "Pending",
+          "Approved",
+          "Rejected"
+        ],
+        "type": "string"
+      },
+      "submittedBy": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "supervisorId": {
+        "entity": "user",
+        "pattern": "^emp_[0-9a-f]{32}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "description",
+      "amount",
+      "requestId"
+    ],
+    "type": "object"
+  },
+  "inspection": {
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "inspectionId": {
+        "entity": "inspection",
+        "pattern": "^ins_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "inspector": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "notes": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Pending",
+          "Passed",
+          "Failed",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "title": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "type": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "type",
+      "inspector",
+      "date"
+    ],
+    "type": "object"
+  },
+  "inventory-item": {
+    "additionalProperties": false,
+    "properties": {
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "itemId": {
+        "entity": "inventory-item",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "reorderLevel": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Inactive"
+        ],
+        "type": "string"
+      },
+      "unit": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "unit"
+    ],
+    "type": "object"
+  },
+  "issue": {
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "issueId": {
+        "entity": "issue",
+        "pattern": "^iss_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "priority": {
+        "enum": [
+          "Low",
+          "Medium",
+          "High",
+          "Critical"
+        ],
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Open",
+          "In Progress",
+          "Resolved",
+          "Closed",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "title": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "description"
+    ],
+    "type": "object"
+  },
+  "labour-attendance": {
+    "additionalProperties": false,
+    "properties": {
+      "accNo": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "amount": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "bankName": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "correctionReason": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "labourAttendanceId": {
+        "entity": "worker",
+        "pattern": "^wor_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "nightShift": {
+        "type": "boolean"
+      },
+      "operation": {
+        "enum": [
+          "register",
+          "allocate",
+          "attendance",
+          "debit"
+        ],
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "paymentStatus": {
+        "enum": [
+          "Paid",
+          "Not paid"
+        ],
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "rate": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Present",
+          "Half Day",
+          "Absent"
+        ],
+        "type": "string"
+      },
+      "targetProjectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "type": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "workerId": {
+        "entity": "worker",
+        "pattern": "^wor_[0-9a-f]{32}$",
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "logistics-trip": {
+    "additionalProperties": false,
+    "properties": {
+      "capacity": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "driver": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "endKm": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "helper": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "liters": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "material": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "notes": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "operator": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "rate": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "receipt": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "registrationNumber": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "startKm": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Inactive",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "tripId": {
+        "entity": "logistics-trip",
+        "pattern": "^tri_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "tripType": {
+        "enum": [
+          "vehicle_registration",
+          "vehicle",
+          "fuel",
+          "rental"
+        ],
+        "type": "string"
+      },
+      "type": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "vehicle": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "vendor": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "material": {
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "materialId": {
+        "entity": "material",
+        "pattern": "^mat_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "materialName": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "priority": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "qty": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "quantity": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "remarks": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "requiredDate": {
+        "format": "date",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "issued",
+          "Pending",
+          "Approved",
+          "Rejected",
+          "Issued"
+        ],
+        "type": "string"
+      },
+      "unit": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "materialName",
+      "quantity",
+      "unit"
+    ],
+    "type": "object"
+  },
+  "milestone": {
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "milestoneId": {
+        "entity": "milestone",
+        "pattern": "^mil_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "owner": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "progress": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Pending",
+          "In Progress",
+          "Completed",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "targetDate": {
+        "format": "date",
+        "type": "string"
+      },
+      "title": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "targetDate",
+      "owner",
+      "progress"
+    ],
+    "type": "object"
+  },
+  "organization": {
+    "additionalProperties": false,
+    "properties": {
+      "adminEmail": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "adminName": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "contactEmail": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "contactPhone": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "plan": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Suspended",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "taxId": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "type": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "payment": {
+    "additionalProperties": false,
+    "properties": {
+      "amount": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "billId": {
+        "entity": "bill",
+        "pattern": "^bil_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "materialId": {
+        "entity": "inventory-item",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "mode": {
+        "enum": [
+          "NEFT",
+          "RTGS",
+          "Cheque",
+          "Cash",
+          "UPI"
+        ],
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "paymentId": {
+        "entity": "payment",
+        "pattern": "^pay_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "reference": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Draft",
+          "Pending",
+          "Approved",
+          "Rejected"
+        ],
+        "type": "string"
+      },
+      "vendorId": {
+        "entity": "vendor",
+        "pattern": "^ven_[0-9a-f]{32}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "vendorId",
+      "materialId",
+      "amount",
+      "mode",
+      "reference",
+      "requestId"
+    ],
+    "type": "object"
+  },
+  "payroll": {
+    "additionalProperties": false,
+    "properties": {
+      "basic": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "conveyance": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "employeeId": {
+        "entity": "user",
+        "pattern": "^emp_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "esi": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "expectedCreatedAt": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "hra": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "medical": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "month": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "pf": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "reference": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "tds": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "project": {
+    "additionalProperties": false,
+    "properties": {
+      "budget": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "endDate": {
+        "format": "date",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "image": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "location": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "phase": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "progress": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "spent": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "startDate": {
+        "format": "date",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Planning",
+          "Planned",
+          "In Progress",
+          "On Hold",
+          "Completed",
+          "Archived"
+        ],
+        "type": "string"
+      },
+      "supervisor": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "supervisorIds": {
+        "entity": "user",
+        "maxItems": 80,
+        "pattern": "^emp_[0-9a-f]{32}$",
+        "type": "array"
+      }
+    },
+    "required": [
+      "name",
+      "budget"
+    ],
+    "type": "object"
+  },
+  "setting": {
+    "additionalProperties": false,
+    "properties": {
+      "address": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "approvalNotifications": {
+        "type": "boolean"
+      },
+      "cin": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "companyName": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "currency": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "emailNotifications": {
+        "type": "boolean"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "phone": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "plan": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "primaryEmail": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "pushNotifications": {
+        "type": "boolean"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "timezone": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "subcontractor": {
+    "additionalProperties": false,
+    "properties": {
+      "address": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "contactPerson": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "contractValue": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "contractorId": {
+        "entity": "subcontractor",
+        "pattern": "^sub_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "description": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "email": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "endDate": {
+        "format": "date",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "phone": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "quantity": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "registryId": {
+        "entity": "subcontractor",
+        "pattern": "^sub_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "requiredDate": {
+        "format": "date",
+        "type": "string"
+      },
+      "scopeOfWork": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "startDate": {
+        "format": "date",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Inactive",
+          "Draft",
+          "Pending",
+          "Approved",
+          "Rejected"
+        ],
+        "type": "string"
+      },
+      "subcontractorId": {
+        "entity": "subcontractor",
+        "pattern": "^sub_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "trade": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "type": {
+        "enum": [
+          "Contractor",
+          "Procurement"
+        ],
+        "type": "string"
+      },
+      "unit": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "user": {
+    "additionalProperties": false,
+    "properties": {
+      "department": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "email": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "employeeId": {
+        "entity": "user",
+        "pattern": "^emp_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "location": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "phone": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "role": {
+        "enum": [
+          "super_admin",
+          "operations_admin",
+          "supervisor"
+        ],
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Disabled"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "email",
+      "role"
+    ],
+    "type": "object"
+  },
+  "vendor": {
+    "additionalProperties": false,
+    "properties": {
+      "email": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "materialIds": {
+        "entity": "inventory-item",
+        "maxItems": 80,
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "type": "array"
+      },
+      "name": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "phone": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "Active",
+          "Inactive"
+        ],
+        "type": "string"
+      },
+      "type": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "vendorId": {
+        "entity": "vendor",
+        "pattern": "^ven_[0-9a-f]{32}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "materialIds"
+    ],
+    "type": "object"
+  },
+  "warehouse-event": {
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "format": "date",
+        "type": "string"
+      },
+      "expectedVersion": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "indentId": {
+        "entity": "material",
+        "pattern": "^mat_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "issuedTo": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "item": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "materialName": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "orgId": {
+        "entity": "organization",
+        "pattern": "^org_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "projectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "qty": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "quantity": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "rate": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "requestId": {
+        "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "targetProjectId": {
+        "entity": "project",
+        "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "unit": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "vendor": {
+        "maxLength": 4000,
+        "type": "string"
+      }
+    },
+    "required": [
+      "item",
+      "unit",
+      "qty",
+      "requestId"
+    ],
+    "type": "object"
+  }
+}

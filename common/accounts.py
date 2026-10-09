@@ -4,9 +4,9 @@ import os
 from datetime import datetime, timezone
 
 import boto3
-from common.authz import AuthorizationError, SUPER_ADMIN, OPERATIONS_ADMIN, SUPERVISOR, require_organization
+from common.authz import AuthorizationError, OPERATIONS_ADMIN, SUPERVISOR, SUPER_ADMIN, require_organization
 from common.dynamo import get_table
-from common import audit
+from common import audit, model
 
 log = logging.getLogger(__name__)
 
@@ -41,8 +41,9 @@ def create_account(identity, data):
     username = result["Username"]
     sub = next(a["Value"] for a in result["Attributes"] if a["Name"] == "sub")
     now = datetime.now(timezone.utc).isoformat()
-    item = {"PK": f"ORG#{org_id}", "SK": f"USER#{sub}", "entityType": "user",
-            "employeeId": sub, "orgId": org_id, "cognitoUsername": username,
+    employee_id = model.employee_id(sub)
+    item = {"PK": f"ORG#{org_id}", "SK": f"USER#{employee_id}", "entityType": "user",
+            "employeeId": employee_id, "cognitoSub": sub, "orgId": org_id, "cognitoUsername": username,
             "name": name, "email": email, "role": role, "status": "Active",
             "department": str(data.get("department", "")), "phone": str(data.get("phone", "")),
             "location": str(data.get("location", "")), "createdAt": now, "updatedAt": now,

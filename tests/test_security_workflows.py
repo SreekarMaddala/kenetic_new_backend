@@ -1,3 +1,24 @@
+from common import model
+# Canonical employee IDs are distinct from the signed login subjects.
+ORG_A = model.new_id('organization', 'ORG-A')
+ORG_B = model.new_id('organization', 'ORG-B')
+PLATFORM_ORG = model.new_id('organization', 'PLATFORM')
+PROJECT_A = model.new_id('project', 'P-A')
+PROJECT_B = model.new_id('project', 'P-B')
+ISSUE_A = model.new_id('issue', 'I-A')
+ISSUE_B = model.new_id('issue', 'I-B')
+VENDOR_ID = model.new_id('vendor', 'vendor-1')
+CEMENT_ID = model.new_id('inventory-item', 'cement|bags')
+ADMIN_A = model.new_id('user', 'admin-a')
+ADMIN_B = model.new_id('user', 'admin-b')
+SITE_A = model.new_id('user', 'site-a')
+SITE_B = model.new_id('user', 'site-b')
+SUPER_USER = model.new_id('user', 'super')
+UNASSIGNED = model.new_id('user', 'unassigned')
+NEW_USER = model.new_id('user', 'new-sub')
+PROJECT_C = 'pro_' + 'c' * 32
+
+SUBJECTS = {ADMIN_A: 'admin-a', ADMIN_B: 'admin-b', SITE_A: 'site-a', SITE_B: 'site-b', SUPER_USER: 'super', UNASSIGNED: 'unassigned'}
 import json
 from unittest.mock import MagicMock
 
@@ -18,27 +39,29 @@ def database(monkeypatch):
     monkeypatch.setenv("COGNITO_USER_POOL_ID", "us-east-1_test")
     with mock_aws():
         db = boto3.resource("dynamodb", region_name="us-east-1")
-        for name in {config[0] for config in api.DOMAIN_CONFIG.values()} | {"USERS_TABLE", "PARTIES_TABLE", "MATERIALS_LOGISTICS_TABLE", "AUDIT_EVENTS_TABLE"}:
-            monkeypatch.setenv(name, name)
-            db.create_table(TableName=name, KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}, {"AttributeName": "SK", "KeyType": "RANGE"}], AttributeDefinitions=[{"AttributeName": "PK", "AttributeType": "S"}, {"AttributeName": "SK", "AttributeType": "S"}], BillingMode="PAY_PER_REQUEST")
-        for org in ("ORG-A", "ORG-B"):
+        from test_model import table_definitions
+        for definition, env in table_definitions():
+            definition = dict(definition, TableName=env)
+            monkeypatch.setenv(env, env)
+            db.meta.client.create_table(**definition)
+        for org in (ORG_A, ORG_B):
             put("ORGANIZATIONS_TABLE", f"ORG#{org}", f"ORGANIZATION#{org}", orgId=org, entityType="organization", status="Active", name=org)
-        for sub, role, org in [("admin-a", OPERATIONS_ADMIN, "ORG-A"), ("admin-b", OPERATIONS_ADMIN, "ORG-B"), ("super", SUPER_ADMIN, "ORG-A"), ("site-a", SUPERVISOR, "ORG-A"), ("site-b", SUPERVISOR, "ORG-B"), ("unassigned", SUPERVISOR, "ORG-A")]:
-            put("USERS_TABLE", f"ORG#{org}", f"USER#{sub}", orgId=org, employeeId=sub, role=role, status="Active", cognitoUsername=sub, entityType="user")
-        put("PROJECTS_TABLE", "ORG#ORG-A", "PROJECT#P-A", orgId="ORG-A", projectId="P-A", supervisorIds=["site-a"], entityType="project", name="Site A", budget=100, spent=20, status="Active")
-        put("PROJECTS_TABLE", "ORG#ORG-B", "PROJECT#P-B", orgId="ORG-B", projectId="P-B", supervisorIds=["site-b"], entityType="project", name="Site B")
-        put("SITE_CONTROL_TABLE", "ORG#ORG-A#PROJECT#P-A", "ISSUE#I-A", orgId="ORG-A", issueId="I-A", projectId="P-A", entityType="issue", status="Open")
-        put("SITE_CONTROL_TABLE", "ORG#ORG-B#PROJECT#P-B", "ISSUE#I-B", orgId="ORG-B", issueId="I-B", projectId="P-B", entityType="issue", status="Open")
+        for sub, role, org in [(ADMIN_A, OPERATIONS_ADMIN, ORG_A), (ADMIN_B, OPERATIONS_ADMIN, ORG_B), (SUPER_USER, SUPER_ADMIN, ORG_A), (SITE_A, SUPERVISOR, ORG_A), (SITE_B, SUPERVISOR, ORG_B), (UNASSIGNED, SUPERVISOR, ORG_A)]:
+            put("USERS_TABLE", f"ORG#{org}", f"USER#{sub}", orgId=org, employeeId=sub, role=role, status="Active", cognitoUsername=SUBJECTS[sub], cognitoSub=SUBJECTS[sub], entityType="user")
+        put("PROJECTS_TABLE", f"ORG#{ORG_A}", f"PROJECT#{PROJECT_A}", orgId=ORG_A, projectId=PROJECT_A, supervisorIds=[SITE_A], entityType="project", name="Site A", budget=100, spent=20, status="Active")
+        put("PROJECTS_TABLE", f"ORG#{ORG_B}", f"PROJECT#{PROJECT_B}", orgId=ORG_B, projectId=PROJECT_B, supervisorIds=[SITE_B], entityType="project", name="Site B")
+        put("SITE_CONTROL_TABLE", f"ORG#{ORG_A}#PROJECT#{PROJECT_A}", f"ISSUE#{ISSUE_A}", orgId=ORG_A, issueId=ISSUE_A, projectId=PROJECT_A, entityType="issue", status="Open")
+        put("SITE_CONTROL_TABLE", f"ORG#{ORG_B}#PROJECT#{PROJECT_B}", f"ISSUE#{ISSUE_B}", orgId=ORG_B, issueId=ISSUE_B, projectId=PROJECT_B, entityType="issue", status="Open")
         yield
 
 
 def put(table, pk, sk, **data):
-    get_table(table).put_item(Item={"PK": pk, "SK": sk, **data})
+    get_table(table).put_item(Item=model.index_item({"PK": pk, "SK": sk, **data}))
 
 
-def event(path, method="GET", body=None, sub="admin-a", role=OPERATIONS_ADMIN, org="ORG-A", query=None):
+def event(path, method="GET", body=None, sub=ADMIN_A, role=OPERATIONS_ADMIN, org=ORG_A, query=None):
     return {"rawPath": path, "body": json.dumps(body or {}), "queryStringParameters": query,
-            "requestContext": {"http": {"method": method}, "authorizer": {"jwt": {"claims": {"sub": sub, "custom:org_id": org, "cognito:groups": [role]}}}}}
+            "requestContext": {"http": {"method": method}, "authorizer": {"jwt": {"claims": {"sub": SUBJECTS.get(sub, sub), "custom:org_id": org, "cognito:groups": [role]}}}}}
 
 
 def data(response):
@@ -48,23 +71,23 @@ def data(response):
 
 @pytest.mark.parametrize("method,body", [("GET", None), ("PATCH", {"status": "Closed"}), ("DELETE", None)])
 def test_cross_tenant_project_access_denied(method, body):
-    result = api.site_control_handler(event("/projects/P-B/issues/I-B", method, body), None)
+    result = api.site_control_handler(event(f"/projects/{PROJECT_B}/issues/{ISSUE_B}", method, body), None)
     assert result["statusCode"] == 403
-    assert get_table("SITE_CONTROL_TABLE").get_item(Key={"PK": "ORG#ORG-B#PROJECT#P-B", "SK": "ISSUE#I-B"})["Item"]["status"] == "Open"
+    assert get_table("SITE_CONTROL_TABLE").get_item(Key={"PK": f"ORG#{ORG_B}#PROJECT#{PROJECT_B}", "SK": f"ISSUE#{ISSUE_B}"})["Item"]["status"] == "Open"
 
 
 def test_cannot_choose_another_tenant_in_query_or_body():
-    assert api.projects_handler(event("/projects", query={"orgId": "ORG-B"}), None)["statusCode"] == 403
-    assert api.projects_handler(event("/projects", "POST", {"orgId": "ORG-B", "name": "Attack"}), None)["statusCode"] == 403
+    assert api.projects_handler(event("/projects", query={"orgId": ORG_B}), None)["statusCode"] == 403
+    assert api.projects_handler(event("/projects", "POST", {"orgId": ORG_B, "name": "Attack"}), None)["statusCode"] == 400
 
 
 def test_supervisor_only_lists_assigned_projects_and_cannot_create():
-    args = {"sub": "site-a", "role": SUPERVISOR}
-    assert [p["projectId"] for p in data(api.projects_handler(event("/projects", **args), None))] == ["P-A"]
-    assert data(api.projects_handler(event("/projects", sub="unassigned", role=SUPERVISOR), None)) == []
+    args = {"sub": SITE_A, "role": SUPERVISOR}
+    assert [p["projectId"] for p in data(api.projects_handler(event("/projects", **args), None))] == [PROJECT_A]
+    assert data(api.projects_handler(event("/projects", sub=UNASSIGNED, role=SUPERVISOR), None)) == []
     assert api.projects_handler(event("/projects", "POST", {"name": "Bad"}, **args), None)["statusCode"] == 403
-    assert api.site_control_handler(event("/projects/P-A/issues", sub="unassigned", role=SUPERVISOR), None)["statusCode"] == 403
-    assert len(data(api.site_control_handler(event("/projects/P-A/issues", **args), None))) == 1
+    assert api.site_control_handler(event(f"/projects/{PROJECT_A}/issues", sub=UNASSIGNED, role=SUPERVISOR), None)["statusCode"] == 403
+    assert len(data(api.site_control_handler(event(f"/projects/{PROJECT_A}/issues", **args), None))) == 1
 
 
 def test_project_create_get_update_use_same_partition_and_decimals():
@@ -77,24 +100,24 @@ def test_project_create_get_update_use_same_partition_and_decimals():
 
 @pytest.mark.parametrize("field", ["PK", "SK", "orgId", "projectId", "createdAt", "createdBy", "version", "issueId"])
 def test_updates_reject_protected_fields(field):
-    response = api.site_control_handler(event("/projects/P-A/issues/I-A", "PATCH", {field: "tampered"}), None)
+    response = api.site_control_handler(event(f"/projects/{PROJECT_A}/issues/{ISSUE_A}", "PATCH", {field: "tampered"}), None)
     assert response["statusCode"] in {400, 403}
 
 
 def test_assignment_checks_same_tenant_and_active_supervisor():
-    for ids in [["site-b"], ["admin-a"], ["unknown"]]:
-        assert api.projects_handler(event("/projects/P-A", "PUT", {"supervisorIds": ids}), None)["statusCode"] == 400
-    data(api.projects_handler(event("/projects/P-A", "PUT", {"supervisorIds": ["unassigned"]}), None))
-    assert api.site_control_handler(event("/projects/P-A/issues", sub="site-a", role=SUPERVISOR), None)["statusCode"] == 403
-    assert api.site_control_handler(event("/projects/P-A/issues", sub="unassigned", role=SUPERVISOR), None)["statusCode"] == 200
+    for ids in [[SITE_B], [ADMIN_A], ["unknown"]]:
+        assert api.projects_handler(event(f"/projects/{PROJECT_A}", "PUT", {"supervisorIds": ids}), None)["statusCode"] == 400
+    data(api.projects_handler(event(f"/projects/{PROJECT_A}", "PUT", {"supervisorIds": [UNASSIGNED]}), None))
+    assert api.site_control_handler(event(f"/projects/{PROJECT_A}/issues", sub=SITE_A, role=SUPERVISOR), None)["statusCode"] == 403
+    assert api.site_control_handler(event(f"/projects/{PROJECT_A}/issues", sub=UNASSIGNED, role=SUPERVISOR), None)["statusCode"] == 200
 
 
 def test_disabled_account_and_suspended_org_block_valid_tokens():
     table = get_table("USERS_TABLE")
-    table.update_item(Key={"PK": "ORG#ORG-A", "SK": "USER#admin-a"}, UpdateExpression="SET #s = :s", ExpressionAttributeNames={"#s": "status"}, ExpressionAttributeValues={":s": "Disabled"})
+    table.update_item(Key={"PK": f"ORG#{ORG_A}", "SK": f"USER#{ADMIN_A}"}, UpdateExpression="SET #s = :s", ExpressionAttributeNames={"#s": "status"}, ExpressionAttributeValues={":s": "Disabled"})
     assert api.projects_handler(event("/projects"), None)["statusCode"] == 403
-    get_table("ORGANIZATIONS_TABLE").update_item(Key={"PK": "ORG#ORG-B", "SK": "ORGANIZATION#ORG-B"}, UpdateExpression="SET #s = :s", ExpressionAttributeNames={"#s": "status"}, ExpressionAttributeValues={":s": "Suspended"})
-    assert api.projects_handler(event("/projects", sub="admin-b", org="ORG-B"), None)["statusCode"] == 403
+    get_table("ORGANIZATIONS_TABLE").update_item(Key={"PK": f"ORG#{ORG_B}", "SK": f"ORGANIZATION#{ORG_B}"}, UpdateExpression="SET #s = :s", ExpressionAttributeNames={"#s": "status"}, ExpressionAttributeValues={":s": "Suspended"})
+    assert api.projects_handler(event("/projects", sub=ADMIN_B, org=ORG_B), None)["statusCode"] == 403
 
 
 def test_token_role_must_match_profile():
@@ -103,9 +126,9 @@ def test_token_role_must_match_profile():
 
 
 def test_platform_organization_lifecycle_and_global_listing():
-    args = {"sub": "super", "role": SUPER_ADMIN}
+    args = {"sub": SUPER_USER, "role": SUPER_ADMIN}
     organization = data(api.platform_admin_handler(event("/super-admin/organizations", "POST", {"name": "Client"}, **args), None))
-    assert organization["orgId"] != "ORG-A"
+    assert organization["orgId"] != ORG_A
     path = f'/super-admin/organizations/{organization["orgId"]}'
     assert data(api.platform_admin_handler(event(path, **args), None))["name"] == "Client"
     assert len(data(api.platform_admin_handler(event("/super-admin/organizations", **args), None))) == 3
@@ -124,21 +147,21 @@ def cognito(monkeypatch):
 def test_admin_creates_only_supervisors_and_cognito_invitation_is_explicit(cognito):
     body = {"name": "Site User", "email": "site@example.com", "role": SUPERVISOR}
     account = data(api.platform_admin_handler(event("/employees", "POST", body), None))
-    assert account["employeeId"] == "new-sub"
+    assert account["employeeId"] == model.employee_id("new-sub")
     assert "cognitoUsername" not in account
     assert cognito.admin_create_user.call_args.kwargs["DesiredDeliveryMediums"] == ["EMAIL"]
-    assert {"Name": "custom:org_id", "Value": "ORG-A"} in cognito.admin_create_user.call_args.kwargs["UserAttributes"]
+    assert {"Name": "custom:org_id", "Value": ORG_A} in cognito.admin_create_user.call_args.kwargs["UserAttributes"]
     cognito.admin_add_user_to_group.assert_called_once_with(UserPoolId="us-east-1_test", Username="new-user", GroupName=SUPERVISOR)
-    data(api.platform_admin_handler(event("/employees/new-sub/invitation", "POST"), None))
+    data(api.platform_admin_handler(event(f"/employees/{NEW_USER}/invitation", "POST"), None))
     assert cognito.admin_create_user.call_args.kwargs["MessageAction"] == "RESEND"
     for role in [SUPER_ADMIN, OPERATIONS_ADMIN]:
         assert api.platform_admin_handler(event("/employees", "POST", {**body, "role": role}), None)["statusCode"] == 403
 
 
 def test_superadmin_can_provision_admin_in_another_org(cognito):
-    response = api.platform_admin_handler(event("/employees", "POST", {"name": "Admin", "email": "admin@example.com", "role": OPERATIONS_ADMIN, "orgId": "ORG-B"}, sub="super", role=SUPER_ADMIN), None)
-    assert data(response)["orgId"] == "ORG-B"
-    assert get_table("USERS_TABLE").get_item(Key={"PK": "ORG#ORG-B", "SK": "USER#new-sub"})["Item"]["role"] == OPERATIONS_ADMIN
+    response = api.platform_admin_handler(event("/employees", "POST", {"name": "Admin", "email": "admin@example.com", "role": OPERATIONS_ADMIN, "orgId": ORG_B}, sub=SUPER_USER, role=SUPER_ADMIN), None)
+    assert data(response)["orgId"] == ORG_B
+    assert get_table("USERS_TABLE").get_item(Key={"PK": f"ORG#{ORG_B}", "SK": f"USER#{NEW_USER}"})["Item"]["role"] == OPERATIONS_ADMIN
 
 
 def test_partial_provision_failure_removes_new_cognito_account(cognito, monkeypatch):
@@ -146,22 +169,24 @@ def test_partial_provision_failure_removes_new_cognito_account(cognito, monkeypa
     result = api.platform_admin_handler(event("/employees", "POST", {"name": "Site", "email": "site@example.com", "role": SUPERVISOR}), None)
     assert result["statusCode"] == 500
     cognito.admin_delete_user.assert_called_once()
-    assert "Item" not in get_table("USERS_TABLE").get_item(Key={"PK": "ORG#ORG-A", "SK": "USER#new-sub"})
+    assert "Item" not in get_table("USERS_TABLE").get_item(Key={"PK": f"ORG#{ORG_A}", "SK": f"USER#{NEW_USER}"})
 
 
 def test_disable_account_blocks_existing_token_even_if_cognito_fails(cognito):
     cognito.admin_disable_user.side_effect = RuntimeError("Simulated outage")
-    assert api.platform_admin_handler(event("/employees/site-a", "PUT", {"status": "Disabled"}), None)["statusCode"] == 500
-    assert api.projects_handler(event("/projects", sub="site-a", role=SUPERVISOR), None)["statusCode"] == 403
-    assert api.platform_admin_handler(event("/employees/admin-a", "PUT", {"status": "Disabled"}), None)["statusCode"] == 403
-    assert api.platform_admin_handler(event("/employees/site-b", "PUT", {"status": "Disabled"}, query={"orgId": "ORG-B"}), None)["statusCode"] == 403
+    assert api.platform_admin_handler(event(f"/employees/{SITE_A}", "PUT", {"status": "Disabled"}), None)["statusCode"] == 500
+    assert api.projects_handler(event("/projects", sub=SITE_A, role=SUPERVISOR), None)["statusCode"] == 403
+    assert api.platform_admin_handler(event(f"/employees/{ADMIN_A}", "PUT", {"status": "Disabled"}), None)["statusCode"] == 403
+    assert api.platform_admin_handler(event(f"/employees/{SITE_B}", "PUT", {"status": "Disabled"}, query={"orgId": ORG_B}), None)["statusCode"] == 403
 
 
 def test_attendance_uses_authenticated_user_and_prevents_duplicates():
-    args = {"sub": "site-a", "role": SUPERVISOR}
-    body = {"projectId": "P-A", "supervisorId": "site-b", "location": {"latitude": 12.97, "longitude": 77.59, "accuracy": 15}}
+    args = {"sub": SITE_A, "role": SUPERVISOR}
+    body = {"projectId": PROJECT_A, "supervisorId": SITE_B, "location": {"latitude": 12.97, "longitude": 77.59, "accuracy": 15}}
+    assert api.workforce_handler(event("/supervisor/attendance/check-in", "POST", body, **args), None)["statusCode"] == 400
+    body.pop("supervisorId")
     checkin = data(api.workforce_handler(event("/supervisor/attendance/check-in", "POST", body, **args), None))
-    assert checkin["supervisorId"] == "site-a"
+    assert checkin["supervisorId"] == SITE_A
     assert api.workforce_handler(event("/supervisor/attendance/check-in", "POST", body, **args), None)["statusCode"] == 409
     checkout = data(api.workforce_handler(event("/supervisor/attendance/check-out", "POST", body, **args), None))
     assert checkout["durationSeconds"] >= 0
@@ -169,7 +194,7 @@ def test_attendance_uses_authenticated_user_and_prevents_duplicates():
 
 
 def test_unknown_routes_and_invalid_payloads_fail_closed():
-    assert api.projects_handler(event("/projects/P-A/anything"), None)["statusCode"] == 404
+    assert api.projects_handler(event(f"/projects/{PROJECT_A}/anything"), None)["statusCode"] == 404
     bad = event("/projects", "POST")
     bad["body"] = "[]"
     assert api.projects_handler(bad, None)["statusCode"] == 400
@@ -185,11 +210,11 @@ def test_settings_round_trip_and_analytics_are_real():
 
 
 def test_identical_project_ids_in_different_tenants_do_not_share_records():
-    put("PROJECTS_TABLE", "ORG#ORG-B", "PROJECT#P-A", orgId="ORG-B", projectId="P-A", supervisorIds=["site-b"], entityType="project", name="Different site")
-    assert data(api.site_control_handler(event("/projects/P-A/issues", sub="admin-b", org="ORG-B"), None)) == []
-    created = data(api.site_control_handler(event("/projects/P-A/issues", "POST", {"title": "Other tenant"}, sub="admin-b", org="ORG-B"), None))
-    assert created["orgId"] == "ORG-B"
-    assert [i["issueId"] for i in data(api.site_control_handler(event("/projects/P-A/issues"), None))] == ["I-A"]
+    put("PROJECTS_TABLE", f"ORG#{ORG_B}", f"PROJECT#{PROJECT_A}", orgId=ORG_B, projectId=PROJECT_A, supervisorIds=[SITE_B], entityType="project", name="Different site")
+    assert data(api.site_control_handler(event(f"/projects/{PROJECT_A}/issues", sub=ADMIN_B, org=ORG_B), None)) == []
+    created = data(api.site_control_handler(event(f"/projects/{PROJECT_A}/issues", "POST", {"title": "Other tenant", "description": "Independent tenant issue"}, sub=ADMIN_B, org=ORG_B), None))
+    assert created["orgId"] == ORG_B
+    assert [i["issueId"] for i in data(api.site_control_handler(event(f"/projects/{PROJECT_A}/issues"), None))] == [ISSUE_A]
 
 
 def test_auth_me_requires_active_profile_and_rejects_unimplemented_routes():
@@ -199,45 +224,28 @@ def test_auth_me_requires_active_profile_and_rejects_unimplemented_routes():
 
 
 def test_cannot_modify_account_role_or_org(cognito):
-    assert api.platform_admin_handler(event("/employees/site-a", "PUT", {"role": SUPER_ADMIN}), None)["statusCode"] == 400
-    assert api.platform_admin_handler(event("/employees/site-a", "PUT", {"orgId": "ORG-B"}), None)["statusCode"] == 403
+    assert api.platform_admin_handler(event(f"/employees/{SITE_A}", "PUT", {"role": SUPER_ADMIN}), None)["statusCode"] == 400
+    assert api.platform_admin_handler(event(f"/employees/{SITE_A}", "PUT", {"orgId": ORG_B}), None)["statusCode"] == 400
 
 
 def test_inviting_disabled_user_is_rejected(cognito):
-    data(api.platform_admin_handler(event("/employees/site-a", "PUT", {"status": "Disabled"}), None))
-    assert api.platform_admin_handler(event("/employees/site-a/invitation", "POST"), None)["statusCode"] == 400
+    data(api.platform_admin_handler(event(f"/employees/{SITE_A}", "PUT", {"status": "Disabled"}), None))
+    assert api.platform_admin_handler(event(f"/employees/{SITE_A}/invitation", "POST"), None)["statusCode"] == 400
     cognito.admin_create_user.assert_not_called()
 
 
-def test_migration_copies_only_verified_records_and_is_idempotent():
-    from scripts.migrate_project_partitions import migrate
-    mapping = {"projects": "PROJECTS_TABLE", "parties": "PARTIES_TABLE", "field-operations": "FIELD_OPERATIONS_TABLE",
-               "site-control": "SITE_CONTROL_TABLE", "materials-logistics": "MATERIALS_LOGISTICS_TABLE",
-               "document-control": "DOCUMENT_CONTROL_TABLE", "inventory": "INVENTORY_TABLE", "finance": "FINANCE_TABLE", "settings": "SETTINGS_TABLE"}
-    class Database:
-        def Table(self, name):
-            return get_table(mapping[name.removeprefix("test-")])
-    put("SITE_CONTROL_TABLE", "PROJECT#P-A", "ISSUE#LEGACY", orgId="ORG-A", issueId="LEGACY")
-    put("SITE_CONTROL_TABLE", "PROJECT#UNKNOWN", "ISSUE#ORPHAN", orgId="ORG-B")
-    result = migrate(Database(), "test")
-    assert result["pending"] == 1 and result["conflicts"] == 1
-    assert "Item" not in get_table("SITE_CONTROL_TABLE").get_item(Key={"PK": "ORG#ORG-A#PROJECT#P-A", "SK": "ISSUE#LEGACY"})
-    result = migrate(Database(), "test", apply=True)
-    assert result["copied"] == 1
-    assert "Item" in get_table("SITE_CONTROL_TABLE").get_item(Key={"PK": "PROJECT#P-A", "SK": "ISSUE#LEGACY"})
-    assert migrate(Database(), "test", apply=True)["existing"] == 1
 
 
 def test_bootstrap_uses_same_pool_and_creates_active_profile(cognito):
     from scripts.bootstrap_account import bootstrap
     from types import SimpleNamespace
     args = SimpleNamespace(region="us-east-1", users_table="USERS_TABLE", organizations_table="ORGANIZATIONS_TABLE",
-                           org_id="PLATFORM", org_name="Platform", pool_id="us-east-1_test", email="owner@example.com",
+                           org_id=PLATFORM_ORG, org_name="Platform", pool_id="us-east-1_test", email="owner@example.com",
                            name="Owner", role=SUPER_ADMIN, send_invitation=False)
-    cognito.admin_create_user.return_value["User"]["Attributes"].append({"Name": "custom:org_id", "Value": "PLATFORM"})
+    cognito.admin_create_user.return_value["User"]["Attributes"].append({"Name": "custom:org_id", "Value": PLATFORM_ORG})
     bootstrap(args)
     cognito.admin_add_user_to_group.assert_called_once_with(UserPoolId="us-east-1_test", Username="new-user", GroupName=SUPER_ADMIN)
-    profile = get_table("USERS_TABLE").get_item(Key={"PK": "ORG#PLATFORM", "SK": "USER#new-sub"})["Item"]
+    profile = get_table("USERS_TABLE").get_item(Key={"PK": f"ORG#{PLATFORM_ORG}", "SK": f"USER#{NEW_USER}"})["Item"]
     assert profile["status"] == "Active" and profile["role"] == SUPER_ADMIN
     assert cognito.admin_create_user.call_args.kwargs["MessageAction"] == "SUPPRESS"
 

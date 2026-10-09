@@ -1,19 +1,52 @@
-# Kinetic ERP backend
+# Backend structure
 
-The current backend uses twelve consolidated AWS SAM Lambda functions and twelve externally managed DynamoDB tables. The former catalog of 73 individual handlers described an earlier layout and does not represent the current implementation.
+The backend uses 11 direct HTTP handlers and 16 domain tables. Requests follow
+`handlers/consolidated.py` → authorization and validation → domain workflows →
+database writes and audit history.
 
-Authentication uses one Cognito user pool with `super_admin`, `operations_admin` and `supervisor` groups. API handlers enforce active account status, organization isolation and current project assignments. The frontend derives its permissions from the authenticated account.
+- `handlers/`: request routing and response boundaries.
+- `common/workflows.py`: small dispatcher for domain operations.
+- `common/payroll.py`: salary setup, payroll generation and settlement.
+- `common/finance.py`: payment approval, reversals and material references.
+- `common/inventory.py`: catalog, receipts and stock transfers.
+- `common/reporting.py`: date ranges, spending totals and report data.
+- `common/workforce.py`: workers, allocations, attendance and deductions.
+- `common/workflow_helpers.py` and `workflow_validation.py`: shared reads,
+  values, validation and approval transitions.
+- Other `common/` modules: access checks, records and database integrity.
+- `tests/`: business rules, tenant isolation and request regression tests.
 
-See [ACCESS_SETUP.md](ACCESS_SETUP.md) for deployment parameters, first-account bootstrap, migration, the role matrix, validation commands and remaining release work. See [template.yaml](template.yaml) for deployed routes and IAM policies.
+Payroll generation is `POST /projects/{projectId}/payroll` with a `month`.
+It returns the completed cycle; repeating the same month returns the existing
+cycle. Salary snapshots and settlement checks remain in place.
 
-## Tests
+Financial reports use `GET /reports/executive` with optional `startDate` and
+`endDate`. The frontend creates the CSV download from that response.
+There are no queue workers, scheduled dispatchers or job polling endpoints.
+Audit records remain in the database.
 
-Install `requirements-dev.txt`, then run `python -m pytest tests -q` from this directory. These tests use simulated AWS services and do not create live users, send emails or modify live tables.
+The runtime uses one domain schema: prefixed IDs, separate workforce and payroll
+tables, sparse indexes and immutable payroll entries. The table definitions in
+`aws-setup/tables.json` remain the authoritative schema.
 
-## API CORS
+Resource names follow `kinetic-erp-<functionality>-<dev|prod>`. For example,
+`kinetic-erp-payroll-dev` is a development table and
+`kinetic-erp-payroll-reporting-settings-prod` is the production Lambda for those
+routes. `common/resource_names.py` defines table names used by setup, bootstrap
+and maintenance scripts. The backend template derives the same names from its
+`ProjectName` and `Environment` parameters. Dev and prod use separate tables,
+Lambdas, API stages, Cognito stacks and setup files.
 
-`KineticHttpApi.CorsConfiguration` in `template.yaml` owns CORS for all API routes, including `/subcontractors` and project subcontractors. API Gateway answers browser preflight requests automatically; Lambda handlers do not handle OPTIONS or return CORS headers. Normal API requests retain the Cognito JWT authorizer. Keep explicit OPTIONS integrations and authenticated `$default` routes out of this API so they do not intercept automatic preflight handling. See the [AWS HTTP API CORS documentation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-cors.html).
+Request-size regression tests cover 250 salary profiles (including inactive
+accounts) and reports for 100 projects backed by 10,000 posted transactions.
+They force small database pages to verify complete pagination, check batches
+stay within 100 keys, and verify retries never return incomplete results.
+Employee and overall project-summary reads are batched. Monthly workforce
+records are grouped by worker before calculating payroll.
 
-Set the stack parameter `FrontendOrigin` to the browser origin (scheme, hostname and port, without a path or trailing slash). Its existing `*` default supports both local development and deployed frontends using bearer tokens, without cookie credentials. The S3 upload bucket has its own service-level CORS configuration because uploads go directly to S3.
+These checks use a mocked database. Their timings describe local verification,
+not live service latency or a guaranteed maximum supported workload.
 
-Deploy the updated SAM stack to apply the API configuration and remove old OPTIONS integrations; updating Lambda code alone does not apply this fix. `sam local start-api` is not proof of deployed HTTP API CORS behavior. After deployment, verify preflight without an Authorization token, supplying `Origin`, `Access-Control-Request-Method`, and `Access-Control-Request-Headers: authorization,content-type`. Expect a successful response with the configured allow-origin, methods and headers, then verify the authenticated request from the browser.
+Run backend tests from this directory with `python -m pytest tests -q`.
+Run frontend tests from `frontend/` with `npm test`; use `npm run typecheck`
+and `npm run build` to check the application build.

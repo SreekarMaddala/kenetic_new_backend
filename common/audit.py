@@ -1,14 +1,15 @@
 """Append-only mutation history, committed alongside domain writes."""
-import uuid
+import json
 from datetime import datetime, timezone
 
 from common.dynamo import get_table
+from common import model, storage
 
 
 def operation(identity, action, before=None, after=None, reason=None):
     record = after or before
     stamp = datetime.now(timezone.utc).isoformat()
-    event_id = uuid.uuid4().hex
+    event_id = (model.new_id('audit-event'))
     event = {
         "PK": f"ORG#{record['orgId']}", "SK": f"AUDIT#{stamp}#{event_id}",
         "auditEventId": event_id, "entityType": "audit-event", "orgId": record["orgId"],
@@ -19,6 +20,8 @@ def operation(identity, action, before=None, after=None, reason=None):
     }
     if reason:
         event["reason"] = reason
+    if (len(json.dumps(event, default=str, ensure_ascii=True).encode()) > 200 * 1024):
+        raise ValueError('The audited change is too large; split it into smaller records')
     return {"Put": {"TableName": get_table("AUDIT_EVENTS_TABLE").name, "Item": event,
                     "ConditionExpression": "attribute_not_exists(PK)"}}
 
@@ -32,6 +35,6 @@ def put(table, identity, item, before=None, action=None, **conditions):
         if version is not None:
             conditions["ExpressionAttributeValues"] = {":v": version}
     write = {"TableName": table.name, "Item": item, **conditions}
-    table.meta.client.transact_write_items(TransactItems=[
+    storage.transact(table, [
         {"Put": write}, operation(identity, action or f"{item['entityType']}.{'updated' if before else 'created'}", before, item),
     ])

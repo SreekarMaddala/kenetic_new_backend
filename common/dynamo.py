@@ -1,13 +1,20 @@
 import os
 import boto3
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
-from boto3.dynamodb.conditions import Key, Attr
+from typing import Any, Dict
+from functools import lru_cache
+
+
+@lru_cache(maxsize=4)
+def _lambda_resource(region, endpoint):
+    return boto3.resource('dynamodb', region_name=region, endpoint_url=endpoint)
 
 
 def get_dynamo_resource():
     """Returns boto3 DynamoDB resource."""
     endpoint_url = os.environ.get("DYNAMODB_ENDPOINT_OVERRIDE")
+    if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+        return _lambda_resource(os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION'), endpoint_url)
     if endpoint_url:
         return boto3.resource("dynamodb", endpoint_url=endpoint_url)
     return boto3.resource("dynamodb")

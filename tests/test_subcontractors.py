@@ -1,3 +1,4 @@
+from test_security_workflows import ADMIN_B, ORG_B, PROJECT_A
 from test_security_workflows import database, event, data
 from handlers import consolidated as api
 
@@ -12,7 +13,7 @@ def onboard(**kwargs):
 
 def test_registry_and_project_assignment_are_separate(database):
     company = onboard()
-    endpoint = "/projects/P-A/subcontractors"
+    endpoint = f"/projects/{PROJECT_A}/subcontractors"
     body = {"registryId": company["subcontractorId"], "scopeOfWork": "Install wiring", "name": "Forged"}
     assigned = data(call(endpoint, "POST", body))
     assert assigned["name"] == "ABC Works"
@@ -30,20 +31,20 @@ def test_registry_and_project_assignment_are_separate(database):
 
 
 def test_assignment_rejects_foreign_and_inactive_companies(database):
-    foreign = onboard(sub="admin-b", org="ORG-B")
-    endpoint = "/projects/P-A/subcontractors"
+    foreign = onboard(sub=ADMIN_B, org=ORG_B)
+    endpoint = f"/projects/{PROJECT_A}/subcontractors"
     assert call(endpoint, "POST", {"registryId": foreign["subcontractorId"], "scopeOfWork": "Work"})["statusCode"] == 400
     company = onboard()
     path = "/subcontractors/" + company["subcontractorId"]
     data(call(path, "PATCH", {"status": "Inactive"}))
     assert call(endpoint, "POST", {"registryId": company["subcontractorId"], "scopeOfWork": "Work"})["statusCode"] == 400
     assert call(path, "DELETE")["statusCode"] == 400
-    assert data(call("/subcontractors", sub="admin-b", org="ORG-B"))[0]["subcontractorId"] == foreign["subcontractorId"]
+    assert data(call("/subcontractors", sub=ADMIN_B, org=ORG_B))[0]["subcontractorId"] == foreign["subcontractorId"]
 
 
 def test_assignment_dates_links_and_retries(database):
     company = onboard()
-    endpoint = "/projects/P-A/subcontractors"
+    endpoint = f"/projects/{PROJECT_A}/subcontractors"
     body = {"registryId": company["subcontractorId"], "scopeOfWork": "Wiring", "requestId": "assignment-request-001"}
     assert call(endpoint, "POST", dict(body, startDate="2026-10-05", endDate="2026-10-04"))["statusCode"] == 400
     assignment = data(call(endpoint, "POST", body))

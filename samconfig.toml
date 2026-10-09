@@ -1,33 +1,33 @@
-# SAM CLI configuration file for Kinetic ERP Backend
+# Resource names follow project-functionality-environment.
 version = 0.1
-
-[default]
-[default.global.parameters]
-stack_name = "kinetic-erp-backend"
 
 [default.build.parameters]
 cached = true
-parallel = true
+parallel = false
 
 [default.validate.parameters]
 lint = true
 
 [default.deploy.parameters]
+stack_name = "kinetic-erp-backend-dev"
+region = "ap-south-1"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-s3_prefix = "kinetic-erp-backend"
-region = "ap-south-1"
-image_repositories = []
-parameter_overrides = "CognitoUserPoolId=\"ap-south-1_sgc6pveMA\" CognitoClientId=\"550g35t3rtngsqi3fog8bi9qjl\""
+parameter_overrides = "ProjectName=kinetic-erp Environment=dev"
 
-
-[dev]
 [dev.deploy.parameters]
 stack_name = "kinetic-erp-backend-dev"
 region = "ap-south-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+parameter_overrides = "ProjectName=kinetic-erp Environment=dev"
 
-[prod]
 [prod.deploy.parameters]
 stack_name = "kinetic-erp-backend-prod"
 region = "ap-south-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+parameter_overrides = "ProjectName=kinetic-erp Environment=prod"
