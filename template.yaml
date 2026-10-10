@@ -159,7 +159,7 @@ Resources:
             ApiId:
               Ref: KineticHttpApi
             Path: /auth/{proxy+}
-            Method: ANY
+            Method: GET
             Auth:
               Authorizer: CognitoJwt
       FunctionName:
@@ -207,41 +207,181 @@ Resources:
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
       Events:
-        Routes:
+        RoutesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /super-admin/{proxy+}
-            Method: ANY
-        EmployeesRoot:
+            Method: GET
+        RoutesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /super-admin/{proxy+}
+            Method: POST
+        RoutesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /super-admin/{proxy+}
+            Method: PUT
+        RoutesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /super-admin/{proxy+}
+            Method: PATCH
+        RoutesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /super-admin/{proxy+}
+            Method: DELETE
+        EmployeesRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /employees
-            Method: ANY
-        Employees:
+            Method: GET
+        EmployeesRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees
+            Method: POST
+        EmployeesRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees
+            Method: PUT
+        EmployeesRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees
+            Method: PATCH
+        EmployeesRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees
+            Method: DELETE
+        EmployeesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /employees/{proxy+}
-            Method: ANY
-        OrganizationsRoot:
+            Method: GET
+        EmployeesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees/{proxy+}
+            Method: POST
+        EmployeesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees/{proxy+}
+            Method: PUT
+        EmployeesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees/{proxy+}
+            Method: PATCH
+        EmployeesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /employees/{proxy+}
+            Method: DELETE
+        OrganizationsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /organizations
-            Method: ANY
-        Organizations:
+            Method: GET
+        OrganizationsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations
+            Method: POST
+        OrganizationsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations
+            Method: PUT
+        OrganizationsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations
+            Method: PATCH
+        OrganizationsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations
+            Method: DELETE
+        OrganizationsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /organizations/{proxy+}
-            Method: ANY
+            Method: GET
+        OrganizationsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations/{proxy+}
+            Method: POST
+        OrganizationsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations/{proxy+}
+            Method: PUT
+        OrganizationsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations/{proxy+}
+            Method: PATCH
+        OrganizationsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /organizations/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-platform-admin-${Environment}
   ProjectsFunction:
@@ -292,20 +432,76 @@ Resources:
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
       Events:
-        Root:
+        RootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects
-            Method: ANY
-        Routes:
+            Method: GET
+        RootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects
+            Method: POST
+        RootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects
+            Method: PUT
+        RootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects
+            Method: PATCH
+        RootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects
+            Method: DELETE
+        RoutesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{proxy+}
-            Method: ANY
+            Method: GET
+        RoutesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{proxy+}
+            Method: POST
+        RoutesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{proxy+}
+            Method: PUT
+        RoutesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{proxy+}
+            Method: PATCH
+        RoutesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-projects-${Environment}
   ProjectCommercialFunction:
@@ -344,62 +540,286 @@ Resources:
           TableName:
             Fn::Sub: ${ProjectName}-reporting-${Environment}
       Events:
-        BoqRoot:
+        BoqRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/boq
-            Method: ANY
-        Boq:
+            Method: GET
+        BoqRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq
+            Method: POST
+        BoqRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq
+            Method: PUT
+        BoqRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq
+            Method: PATCH
+        BoqRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq
+            Method: DELETE
+        BoqMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/boq/{proxy+}
-            Method: ANY
-        SubcontractorsRoot:
+            Method: GET
+        BoqMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq/{proxy+}
+            Method: POST
+        BoqMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq/{proxy+}
+            Method: PUT
+        BoqMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq/{proxy+}
+            Method: PATCH
+        BoqMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/boq/{proxy+}
+            Method: DELETE
+        SubcontractorsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/subcontractors
-            Method: ANY
-        Subcontractors:
+            Method: GET
+        SubcontractorsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors
+            Method: POST
+        SubcontractorsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors
+            Method: PUT
+        SubcontractorsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors
+            Method: PATCH
+        SubcontractorsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors
+            Method: DELETE
+        SubcontractorsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/subcontractors/{proxy+}
-            Method: ANY
-        SubcontractorRegistry:
+            Method: GET
+        SubcontractorsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors/{proxy+}
+            Method: POST
+        SubcontractorsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors/{proxy+}
+            Method: PUT
+        SubcontractorsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors/{proxy+}
+            Method: PATCH
+        SubcontractorsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/subcontractors/{proxy+}
+            Method: DELETE
+        SubcontractorRegistryMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /subcontractors
-            Method: ANY
-        SubcontractorRegistryItem:
+            Method: GET
+        SubcontractorRegistryMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors
+            Method: POST
+        SubcontractorRegistryMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors
+            Method: PUT
+        SubcontractorRegistryMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors
+            Method: PATCH
+        SubcontractorRegistryMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors
+            Method: DELETE
+        SubcontractorRegistryItemMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /subcontractors/{proxy+}
-            Method: ANY
-        MilestonesRoot:
+            Method: GET
+        SubcontractorRegistryItemMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors/{proxy+}
+            Method: POST
+        SubcontractorRegistryItemMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors/{proxy+}
+            Method: PUT
+        SubcontractorRegistryItemMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors/{proxy+}
+            Method: PATCH
+        SubcontractorRegistryItemMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /subcontractors/{proxy+}
+            Method: DELETE
+        MilestonesRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/milestones
-            Method: ANY
-        Milestones:
+            Method: GET
+        MilestonesRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones
+            Method: POST
+        MilestonesRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones
+            Method: PUT
+        MilestonesRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones
+            Method: PATCH
+        MilestonesRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones
+            Method: DELETE
+        MilestonesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/milestones/{proxy+}
-            Method: ANY
+            Method: GET
+        MilestonesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones/{proxy+}
+            Method: POST
+        MilestonesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones/{proxy+}
+            Method: PUT
+        MilestonesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones/{proxy+}
+            Method: PATCH
+        MilestonesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/milestones/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-project-commercial-${Environment}
   WorkforceFunction:
@@ -455,20 +875,76 @@ Resources:
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-workforce-${Environment}
       Events:
-        Attendance:
+        AttendanceMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /supervisor/attendance/{proxy+}
-            Method: ANY
-        Labour:
+            Method: GET
+        AttendanceMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/attendance/{proxy+}
+            Method: POST
+        AttendanceMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/attendance/{proxy+}
+            Method: PUT
+        AttendanceMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/attendance/{proxy+}
+            Method: PATCH
+        AttendanceMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/attendance/{proxy+}
+            Method: DELETE
+        LabourMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /supervisor/labour/{proxy+}
-            Method: ANY
+            Method: GET
+        LabourMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/labour/{proxy+}
+            Method: POST
+        LabourMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/labour/{proxy+}
+            Method: PUT
+        LabourMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/labour/{proxy+}
+            Method: PATCH
+        LabourMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/labour/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-workforce-${Environment}
   FieldOperationsFunction:
@@ -514,13 +990,41 @@ Resources:
           TableName:
             Fn::Sub: ${ProjectName}-reporting-${Environment}
       Events:
-        Routes:
+        RoutesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /supervisor/{proxy+}
-            Method: ANY
+            Method: GET
+        RoutesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/{proxy+}
+            Method: POST
+        RoutesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/{proxy+}
+            Method: PUT
+        RoutesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/{proxy+}
+            Method: PATCH
+        RoutesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /supervisor/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-site-activity-${Environment}
   SiteControlFunction:
@@ -552,48 +1056,216 @@ Resources:
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
       Events:
-        IssuesRoot:
+        IssuesRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/issues
-            Method: ANY
-        Issues:
+            Method: GET
+        IssuesRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues
+            Method: POST
+        IssuesRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues
+            Method: PUT
+        IssuesRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues
+            Method: PATCH
+        IssuesRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues
+            Method: DELETE
+        IssuesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/issues/{proxy+}
-            Method: ANY
-        InspectionsRoot:
+            Method: GET
+        IssuesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues/{proxy+}
+            Method: POST
+        IssuesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues/{proxy+}
+            Method: PUT
+        IssuesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues/{proxy+}
+            Method: PATCH
+        IssuesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/issues/{proxy+}
+            Method: DELETE
+        InspectionsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/inspections
-            Method: ANY
-        Inspections:
+            Method: GET
+        InspectionsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections
+            Method: POST
+        InspectionsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections
+            Method: PUT
+        InspectionsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections
+            Method: PATCH
+        InspectionsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections
+            Method: DELETE
+        InspectionsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/inspections/{proxy+}
-            Method: ANY
-        EquipmentRoot:
+            Method: GET
+        InspectionsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections/{proxy+}
+            Method: POST
+        InspectionsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections/{proxy+}
+            Method: PUT
+        InspectionsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections/{proxy+}
+            Method: PATCH
+        InspectionsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/inspections/{proxy+}
+            Method: DELETE
+        EquipmentRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/equipment
-            Method: ANY
-        Equipment:
+            Method: GET
+        EquipmentRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment
+            Method: POST
+        EquipmentRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment
+            Method: PUT
+        EquipmentRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment
+            Method: PATCH
+        EquipmentRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment
+            Method: DELETE
+        EquipmentMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/equipment/{proxy+}
-            Method: ANY
+            Method: GET
+        EquipmentMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment/{proxy+}
+            Method: POST
+        EquipmentMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment/{proxy+}
+            Method: PUT
+        EquipmentMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment/{proxy+}
+            Method: PATCH
+        EquipmentMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/equipment/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-site-control-${Environment}
   DocumentControlFunction:
@@ -632,34 +1304,146 @@ Resources:
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-organizations-${Environment}
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-projects-${Environment}
       Events:
-        DrawingsRoot:
+        DrawingsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/drawings
-            Method: ANY
-        Drawings:
+            Method: GET
+        DrawingsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings
+            Method: POST
+        DrawingsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings
+            Method: PUT
+        DrawingsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings
+            Method: PATCH
+        DrawingsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings
+            Method: DELETE
+        DrawingsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/drawings/{proxy+}
-            Method: ANY
-        DocumentsRoot:
+            Method: GET
+        DrawingsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings/{proxy+}
+            Method: POST
+        DrawingsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings/{proxy+}
+            Method: PUT
+        DrawingsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings/{proxy+}
+            Method: PATCH
+        DrawingsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/drawings/{proxy+}
+            Method: DELETE
+        DocumentsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/documents
-            Method: ANY
-        Documents:
+            Method: GET
+        DocumentsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents
+            Method: POST
+        DocumentsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents
+            Method: PUT
+        DocumentsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents
+            Method: PATCH
+        DocumentsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents
+            Method: DELETE
+        DocumentsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/documents/{proxy+}
-            Method: ANY
+            Method: GET
+        DocumentsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents/{proxy+}
+            Method: POST
+        DocumentsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents/{proxy+}
+            Method: PUT
+        DocumentsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents/{proxy+}
+            Method: PATCH
+        DocumentsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/documents/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-documents-${Environment}
   SupplyChainFunction:
@@ -702,41 +1486,181 @@ Resources:
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-inventory-${Environment}
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-vendors-contractors-${Environment}
       Events:
-        VendorsRoot:
+        VendorsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /vendors
-            Method: ANY
-        Vendors:
+            Method: GET
+        VendorsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors
+            Method: POST
+        VendorsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors
+            Method: PUT
+        VendorsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors
+            Method: PATCH
+        VendorsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors
+            Method: DELETE
+        VendorsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /vendors/{proxy+}
-            Method: ANY
-        InventoryRoot:
+            Method: GET
+        VendorsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors/{proxy+}
+            Method: POST
+        VendorsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors/{proxy+}
+            Method: PUT
+        VendorsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors/{proxy+}
+            Method: PATCH
+        VendorsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /vendors/{proxy+}
+            Method: DELETE
+        InventoryRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /inventory
-            Method: ANY
-        Inventory:
+            Method: GET
+        InventoryRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory
+            Method: POST
+        InventoryRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory
+            Method: PUT
+        InventoryRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory
+            Method: PATCH
+        InventoryRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory
+            Method: DELETE
+        InventoryMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /inventory/{proxy+}
-            Method: ANY
-        Warehouse:
+            Method: GET
+        InventoryMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory/{proxy+}
+            Method: POST
+        InventoryMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory/{proxy+}
+            Method: PUT
+        InventoryMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory/{proxy+}
+            Method: PATCH
+        InventoryMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /inventory/{proxy+}
+            Method: DELETE
+        WarehouseMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /warehouse/{proxy+}
-            Method: ANY
+            Method: GET
+        WarehouseMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /warehouse/{proxy+}
+            Method: POST
+        WarehouseMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /warehouse/{proxy+}
+            Method: PUT
+        WarehouseMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /warehouse/{proxy+}
+            Method: PATCH
+        WarehouseMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /warehouse/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-inventory-vendors-${Environment}
   FinanceFunction:
@@ -785,76 +1709,356 @@ Resources:
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-users-${Environment}
           - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-finance-${Environment}
       Events:
-        GlobalExpenses:
+        GlobalExpensesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /expenses
-            Method: ANY
-        GlobalExpense:
+            Method: GET
+        GlobalExpensesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses
+            Method: POST
+        GlobalExpensesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses
+            Method: PUT
+        GlobalExpensesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses
+            Method: PATCH
+        GlobalExpensesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses
+            Method: DELETE
+        GlobalExpenseMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /expenses/{proxy+}
-            Method: ANY
-        PaymentsRoot:
+            Method: GET
+        GlobalExpenseMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses/{proxy+}
+            Method: POST
+        GlobalExpenseMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses/{proxy+}
+            Method: PUT
+        GlobalExpenseMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses/{proxy+}
+            Method: PATCH
+        GlobalExpenseMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /expenses/{proxy+}
+            Method: DELETE
+        PaymentsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /payments
-            Method: ANY
-        Payments:
+            Method: GET
+        PaymentsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments
+            Method: POST
+        PaymentsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments
+            Method: PUT
+        PaymentsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments
+            Method: PATCH
+        PaymentsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments
+            Method: DELETE
+        PaymentsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /payments/{proxy+}
-            Method: ANY
-        ProjectPaymentsRoot:
+            Method: GET
+        PaymentsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments/{proxy+}
+            Method: POST
+        PaymentsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments/{proxy+}
+            Method: PUT
+        PaymentsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments/{proxy+}
+            Method: PATCH
+        PaymentsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /payments/{proxy+}
+            Method: DELETE
+        ProjectPaymentsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payments
-            Method: ANY
-        ProjectPayments:
+            Method: GET
+        ProjectPaymentsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments
+            Method: POST
+        ProjectPaymentsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments
+            Method: PUT
+        ProjectPaymentsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments
+            Method: PATCH
+        ProjectPaymentsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments
+            Method: DELETE
+        ProjectPaymentsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payments/{proxy+}
-            Method: ANY
-        BillsRoot:
+            Method: GET
+        ProjectPaymentsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments/{proxy+}
+            Method: POST
+        ProjectPaymentsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments/{proxy+}
+            Method: PUT
+        ProjectPaymentsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments/{proxy+}
+            Method: PATCH
+        ProjectPaymentsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payments/{proxy+}
+            Method: DELETE
+        BillsRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/bills
-            Method: ANY
-        Bills:
+            Method: GET
+        BillsRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills
+            Method: POST
+        BillsRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills
+            Method: PUT
+        BillsRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills
+            Method: PATCH
+        BillsRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills
+            Method: DELETE
+        BillsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/bills/{proxy+}
-            Method: ANY
-        ExpensesRoot:
+            Method: GET
+        BillsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills/{proxy+}
+            Method: POST
+        BillsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills/{proxy+}
+            Method: PUT
+        BillsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills/{proxy+}
+            Method: PATCH
+        BillsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/bills/{proxy+}
+            Method: DELETE
+        ExpensesRootMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/expenses
-            Method: ANY
-        Expenses:
+            Method: GET
+        ExpensesRootMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses
+            Method: POST
+        ExpensesRootMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses
+            Method: PUT
+        ExpensesRootMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses
+            Method: PATCH
+        ExpensesRootMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses
+            Method: DELETE
+        ExpensesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/expenses/{proxy+}
-            Method: ANY
+            Method: GET
+        ExpensesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses/{proxy+}
+            Method: POST
+        ExpensesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses/{proxy+}
+            Method: PUT
+        ExpensesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses/{proxy+}
+            Method: PATCH
+        ExpensesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/expenses/{proxy+}
+            Method: DELETE
       FunctionName:
         Fn::Sub: ${ProjectName}-finance-${Environment}
   GovernanceFunction:
@@ -926,27 +2130,111 @@ Resources:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payroll
             Method: GET
-        PayrollRoutes:
+        PayrollRoutesMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /projects/{projectId}/payroll/{proxy+}
-            Method: ANY
-        Dashboard:
+            Method: GET
+        PayrollRoutesMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payroll/{proxy+}
+            Method: POST
+        PayrollRoutesMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payroll/{proxy+}
+            Method: PUT
+        PayrollRoutesMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payroll/{proxy+}
+            Method: PATCH
+        PayrollRoutesMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /projects/{projectId}/payroll/{proxy+}
+            Method: DELETE
+        DashboardMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /dashboard/{proxy+}
-            Method: ANY
-        Settings:
+            Method: GET
+        DashboardMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /dashboard/{proxy+}
+            Method: POST
+        DashboardMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /dashboard/{proxy+}
+            Method: PUT
+        DashboardMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /dashboard/{proxy+}
+            Method: PATCH
+        DashboardMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /dashboard/{proxy+}
+            Method: DELETE
+        SettingsMethodGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: KineticHttpApi
             Path: /settings
-            Method: ANY
+            Method: GET
+        SettingsMethodPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /settings
+            Method: POST
+        SettingsMethodPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /settings
+            Method: PUT
+        SettingsMethodPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /settings
+            Method: PATCH
+        SettingsMethodDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: KineticHttpApi
+            Path: /settings
+            Method: DELETE
         GeneratePayroll:
           Type: HttpApi
           Properties:

@@ -30,7 +30,9 @@ def test_all_http_routes_use_gateway_cors_without_lambda_preflight():
                 continue
             properties = event["Properties"]
             assert properties["ApiId"] == {"Ref": "KineticHttpApi"}
-            assert properties["Method"].upper() != "OPTIONS"
+            # ANY captures preflight and applies JWT auth before gateway CORS.
+            # Explicit business methods leave OPTIONS to API Gateway.
+            assert properties["Method"].upper() in {"GET", "POST", "PUT", "PATCH", "DELETE"}
             assert properties.get("Path") not in (None, "$default")
             assert properties.get("Auth", {}).get("Authorizer", "CognitoJwt") == "CognitoJwt"
             routes.add(properties["Path"])
