@@ -1713,6 +1713,10 @@
         "pattern": "^itm_[0-9a-f]{32}$",
         "type": "array"
       },
+      "materialsSupplied": {
+        "maxLength": 4000,
+        "type": "string"
+      },
       "name": {
         "maxLength": 4000,
         "type": "string"
@@ -1753,8 +1757,7 @@
       }
     },
     "required": [
-      "name",
-      "materialIds"
+      "name"
     ],
     "type": "object"
   },

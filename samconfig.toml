@@ -5,6 +5,10 @@ version = 0.1
 cached = true
 parallel = false
 
+[dev.build.parameters]
+cached = true
+parallel = false
+
 [default.validate.parameters]
 lint = true
 
@@ -14,7 +18,7 @@ region = "ap-south-1"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-parameter_overrides = "ProjectName=kinetic-erp Environment=dev"
+parameter_overrides = "ProjectName=kinetic-erp Environment=dev CognitoUserPoolId=ap-south-1_VR0j65Lrj CognitoClientId=1546223as2mv83ru74e00eubkt FrontendOrigin=https://kenetic-new-frontend.vercel.app"
 
 [dev.deploy.parameters]
 stack_name = "kinetic-erp-backend-dev"
@@ -22,7 +26,7 @@ region = "ap-south-1"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-parameter_overrides = "ProjectName=kinetic-erp Environment=dev"
+parameter_overrides = "ProjectName=kinetic-erp Environment=dev CognitoUserPoolId=ap-south-1_VR0j65Lrj CognitoClientId=1546223as2mv83ru74e00eubkt FrontendOrigin=https://kenetic-new-frontend.vercel.app"
 
 [prod.deploy.parameters]
 stack_name = "kinetic-erp-backend-prod"

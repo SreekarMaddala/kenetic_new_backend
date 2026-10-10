@@ -8,7 +8,7 @@ Parameters:
     Type: String
   FrontendOrigin:
     Type: String
-    Default: '*'
+    Default: https://kenetic-new-frontend.vercel.app
     Description: Exact frontend HTTPS origin (no trailing slash) or '*'
   ProjectName:
     Type: String
@@ -90,6 +90,7 @@ Resources:
         CorsRules:
         - AllowedOrigins:
           - Ref: FrontendOrigin
+          - http://localhost:5173
           AllowedMethods:
           - GET
           - POST
@@ -110,6 +111,7 @@ Resources:
       CorsConfiguration:
         AllowOrigins:
         - Ref: FrontendOrigin
+        - http://localhost:5173
         AllowMethods:
         - GET
         - POST

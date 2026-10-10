@@ -121,7 +121,7 @@ def vendor_materials(body, org):
         raise ValueError("Each material can only be selected once")
     items = [catalog_material(org, i) for i in ids]
     body["materialIds"] = ids
-    body["materialsSupplied"] = ", ".join(f"{i['name']} ({i['unit']})" for i in items)
+    body.setdefault("materialsSupplied", ", ".join(f"{i['name']} ({i['unit']})" for i in items))
 
 
 def catalog(identity, resource, method, body, query, pk, org, pid, rid):
@@ -144,8 +144,8 @@ def catalog(identity, resource, method, body, query, pk, org, pid, rid):
         if set(body) & {"quantity", "totalStock", "centralStock", "deployedStock"}:
             raise ValueError("Stock balances are maintained by receipts and issue vouchers")
     if resource == "vendor" and method in {"POST", "PUT", "PATCH"}:
-        if "materialsSupplied" in body and "materialIds" not in body:
-            raise ValueError("Select catalog materials instead of entering material names")
+        if "materialsSupplied" in body:
+            body["materialsSupplied"] = body["materialsSupplied"].strip()
         if method == "POST" or "materialIds" in body:
             vendor_materials(body, org)
         if method == "POST":

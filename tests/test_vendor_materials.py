@@ -47,11 +47,27 @@ def test_vendor_material_assignment_uses_catalog_ids(database):
     assert vendor["status"] == "Active"
     for ids in [[cement["itemId"], cement["itemId"]], ["missing"], "Cement"]:
         assert call(api.supply_chain_handler, "/vendors/" + vendor["vendorId"], "PATCH", {"materialIds": ids})["statusCode"] == 400
-    assert call(api.supply_chain_handler, "/vendors", "POST", {"name": "Other", "materialsSupplied": "Cement"})["statusCode"] == 400
+    manual = data(call(api.supply_chain_handler, "/vendors", "POST", {"name": "Other", "materialsSupplied": "  Cement, sand, TMT steel  "}))
+    assert manual["materialsSupplied"] == "Cement, sand, TMT steel"
+    assert manual["materialIds"] == []
     foreign = data(call(api.supply_chain_handler, "/inventory", "POST", {"name": "Foreign", "unit": "Kg"}, sub=ADMIN_B, org=ORG_B))
     assert call(api.supply_chain_handler, "/vendors/" + vendor["vendorId"], "PATCH", {"materialIds": [foreign["itemId"]]})["statusCode"] == 400
     changed = data(call(api.supply_chain_handler, "/vendors/" + vendor["vendorId"], "PATCH", {"materialIds": []}))
     assert changed["materialsSupplied"] == ""
+
+
+def test_manual_vendor_materials_can_be_edited_without_losing_catalog_links(database):
+    cement = material()
+    vendor = supplier([cement["itemId"]])
+    path = "/vendors/" + vendor["vendorId"]
+    edited = data(call(api.supply_chain_handler, path, "PUT", {"name": "Updated Supplier", "materialsSupplied": "Cement, custom aggregates"}))
+    assert edited["materialsSupplied"] == "Cement, custom aggregates"
+    assert edited["materialIds"] == [cement["itemId"]]
+    cleared = data(call(api.supply_chain_handler, path, "PATCH", {"materialsSupplied": ""}))
+    assert cleared["materialsSupplied"] == ""
+    assert cleared["materialIds"] == [cement["itemId"]]
+    for invalid in [123, ["Cement"], "x" * 4001]:
+        assert call(api.supply_chain_handler, path, "PATCH", {"materialsSupplied": invalid})["statusCode"] == 400
 
 
 def test_payment_only_accepts_selected_vendors_catalog_material(database):

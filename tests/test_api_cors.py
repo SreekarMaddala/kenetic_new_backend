@@ -16,7 +16,8 @@ def test_all_http_routes_use_gateway_cors_without_lambda_preflight():
     resources = template["Resources"]
     gateway = resources["KineticHttpApi"]["Properties"]
     cors = gateway["CorsConfiguration"]
-    assert cors["AllowOrigins"] == [{"Ref": "FrontendOrigin"}]
+    assert cors["AllowOrigins"] == [{"Ref": "FrontendOrigin"}, "http://localhost:5173"]
+    assert resources["DocumentsBucket"]["Properties"]["CorsConfiguration"]["CorsRules"][0]["AllowedOrigins"] == cors["AllowOrigins"]
     assert set(cors["AllowMethods"]) >= {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
     assert {header.lower() for header in cors["AllowHeaders"]} >= {"authorization", "content-type", "x-amz-date", "x-api-key", "x-amz-security-token"}
     assert gateway["Auth"]["DefaultAuthorizer"] == "CognitoJwt"
