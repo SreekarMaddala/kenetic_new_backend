@@ -50,3 +50,21 @@ not live service latency or a guaranteed maximum supported workload.
 Run backend tests from this directory with `python -m pytest tests -q`.
 Run frontend tests from `frontend/` with `npm test`; use `npm run typecheck`
 and `npm run build` to check the application build.
+
+For deployment, prepare the template before building:
+
+```powershell
+python scripts/prepare_deploy.py
+sam build --cached --template-file .aws-sam/prepared-template.yaml
+sam deploy --config-env dev --config-file ../../samconfig.toml --template-file .aws-sam/build/template.yaml
+```
+
+The source template keeps explicit HTTP methods so API Gateway handles OPTIONS
+preflight without JWT authentication. The prepared template preserves those
+routes in the API definition and shares one Lambda permission per path across
+methods. This avoids Lambda's 20 KB resource policy limit, including temporary
+overlap with old permissions during updates. Generate it again after route
+changes; do not build the source template directly for deployment.
+The deploy config path is relative to the built template's directory, so
+`../../samconfig.toml` loads the backend configuration even when the template
+is explicitly specified.
