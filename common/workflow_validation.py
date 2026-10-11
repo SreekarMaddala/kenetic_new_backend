@@ -98,6 +98,17 @@ def validate_record(resource, body, existing=None):
         if merged.get(start) and merged.get(end) and merged[start] > merged[end]:
             raise ValueError(f"{end} cannot precede {start}")
     if resource == "project":
+        for entry in body.get('supervisorsTimeline', []):
+            for field in ('name', 'phase', 'start', 'end'):
+                if not entry[field].strip():
+                    raise ValueError(f'Allocation {field} is required')
+            if entry['start'] >= entry['end']:
+                raise ValueError('Allocation start must be earlier than its end')
+            deadline = merged.get('endDate')
+            if deadline and entry['end'] > deadline:
+                raise ValueError('Allocation cannot end after the project deadline')
+            if entry.get('untilProjectEnd') and (not deadline or entry['end'] != deadline):
+                raise ValueError('Until project end requires an allocation ending on the project deadline')
         if "progress" in merged and number(merged["progress"], "Progress") > 100:
             raise ValueError("Progress must not exceed 100")
         if merged.get("spent", 0) > merged.get("budget", 0):

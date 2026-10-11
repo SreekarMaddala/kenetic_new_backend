@@ -61,6 +61,85 @@ def test_profile_attendance_daily_payments_deductions_and_payroll(app_database):
     assert call(api.workforce_handler, PATH + '/' + wid, query={'month': 'bad'})['statusCode'] == 400
 
 
+def test_recorded_advance_does_not_reduce_wages_or_payroll(app_database):
+    call, pid, wid = registered(app_database)
+    body = {'workerId': wid, 'projectId': pid, 'date': '2026-10-04'}
+    data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'allocate'}))
+    data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'attendance', 'status': 'Present'}))
+    advance = {**body, 'operation': 'advance', 'amount': 2000, 'description': 'Personal advance', 'requestId': 'record-only-advance-001'}
+    first = data(call(api.workforce_handler, PATH, 'POST', advance))
+    repeated = data(call(api.workforce_handler, PATH, 'POST', advance))
+    assert first['advanceId'] == repeated['advanceId']
+    assert call(api.workforce_handler, PATH, 'POST', {**advance, 'amount': 300})['statusCode'] == 400
+    query = {'projectId': pid, 'month': '2026-10'}
+    profile = data(call(api.workforce_handler, PATH + '/' + wid, query=query))
+    assert profile['recordedAdvances'] == 2000 and len(profile['advances']) == 1
+    assert profile['summary']['deductions'] == 0 and profile['summary']['outstanding'] == 800
+    cycle = data(call(api.governance_handler, '/projects/' + pid + '/payroll', 'POST', {'month': '2026-10'}))
+    assert cycle['staff'][0]['net'] == 800
+    data(call(api.workforce_handler, PATH, 'POST', {**advance, 'amount': 500, 'requestId': 'record-only-after-payroll'}))
+    after = data(call(api.workforce_handler, PATH + '/' + wid, query=query))
+    assert after['recordedAdvances'] == 2500 and len(after['advances']) == 2
+    assert after['summary']['deductions'] == 0 and after['summary']['outstanding'] == 800
+    assert data(call(api.workforce_handler, PATH + '/' + wid, query={**query, 'month': '2026-11'}))['recordedAdvances'] == 0
+    other = data(call(api.projects_handler, '/projects', 'POST', {'name': 'Other site', 'budget': 10000}))['projectId']
+    assert data(call(api.workforce_handler, PATH + '/' + wid, query={**query, 'projectId': other}))['recordedAdvances'] == 0
+
+
+def test_partial_clear_full_clear_and_delete_leave_payroll_unchanged(app_database):
+    call, pid, wid = registered(app_database)
+    body = {'workerId': wid, 'projectId': pid, 'date': '2026-10-04'}
+    data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'allocate'}))
+    data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'attendance', 'status': 'Present'}))
+    advance = data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'advance', 'amount': 2000, 'description': 'Advance', 'requestId': 'advance-to-clear-001'}))
+    query = {'projectId': pid, 'month': '2026-10'}
+    cycle = data(call(api.governance_handler, '/projects/' + pid + '/payroll', 'POST', {'month': '2026-10'}))
+    assert cycle['staff'][0]['net'] == 800
+    clearing = {**body, 'operation': 'advance_clear', 'advanceId': advance['advanceId'], 'expectedVersion': 0, 'amount': 500, 'requestId': 'clear-advance-001'}
+    for amount in (0, -100, 2001):
+        assert call(api.workforce_handler, PATH, 'POST', {**clearing, 'amount': amount})['statusCode'] == 400
+    first = data(call(api.workforce_handler, PATH, 'POST', clearing))
+    assert first['remainingAmount'] == 1500 and first['clearedAmount'] == 500
+    assert data(call(api.workforce_handler, PATH, 'POST', clearing))['remainingAmount'] == 1500
+    assert call(api.workforce_handler, PATH, 'POST', {**clearing, 'amount': 100})['statusCode'] == 400
+    assert call(api.workforce_handler, PATH, 'POST', {**clearing, 'requestId': 'stale-clear-advance-001'})['statusCode'] == 400
+    profile = data(call(api.workforce_handler, PATH + '/' + wid, query=query))
+    assert profile['recordedAdvances'] == 1500 and profile['advances'][0]['remainingAmount'] == 1500
+    data(call(api.workforce_handler, PATH, 'POST', {**clearing, 'amount': 1500, 'expectedVersion': 1, 'requestId': 'full-clear-advance-001'}))
+    profile = data(call(api.workforce_handler, PATH + '/' + wid, query=query))
+    assert profile['recordedAdvances'] == 0 and profile['advances'] == []
+    second = data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'advance', 'amount': 1000, 'description': 'Second advance', 'requestId': 'advance-to-delete-001'}))
+    data(call(api.workforce_handler, PATH, 'POST', {**clearing, 'advanceId': second['advanceId'], 'amount': 200, 'requestId': 'partial-second-advance'}))
+    deletion = {**body, 'operation': 'advance_delete', 'advanceId': second['advanceId'], 'expectedVersion': 1, 'requestId': 'delete-advance-001'}
+    assert data(call(api.workforce_handler, PATH, 'POST', deletion))['status'] == 'Deleted'
+    assert data(call(api.workforce_handler, PATH, 'POST', deletion))['status'] == 'Deleted'
+    profile = data(call(api.workforce_handler, PATH + '/' + wid, query=query))
+    assert profile['recordedAdvances'] == 0 and profile['advances'] == []
+    assert profile['summary']['deductions'] == 0 and profile['summary']['outstanding'] == 800
+    assert call(api.workforce_handler, PATH, 'POST', {**deletion, 'requestId': 'delete-again-advance'})['statusCode'] == 400
+    other = data(call(api.projects_handler, '/projects', 'POST', {'name': 'Other site', 'budget': 10000}))['projectId']
+    assert call(api.workforce_handler, PATH, 'POST', {**deletion, 'projectId': other})['statusCode'] == 400
+
+
+def test_worker_advance_retry_and_payroll_lock(app_database):
+    call, pid, wid = registered(app_database)
+    body = {'workerId': wid, 'projectId': pid, 'date': '2026-10-04'}
+    advance = {**body, 'operation': 'debit', 'amount': 200, 'description': 'Personal advance', 'requestId': 'worker-advance-retry-001'}
+    first = data(call(api.workforce_handler, PATH, 'POST', advance))
+    repeated = data(call(api.workforce_handler, PATH, 'POST', advance))
+    assert first['deductionId'] == repeated['deductionId']
+    assert call(api.workforce_handler, PATH, 'POST', {**advance, 'amount': 300})['statusCode'] == 400
+    data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'allocate'}))
+    data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'attendance', 'status': 'Present'}))
+    query = {'projectId': pid, 'month': '2026-10'}
+    summary = data(call(api.workforce_handler, PATH + '/' + wid, query=query))['summary']
+    assert summary['deductions'] == 200 and summary['outstanding'] == 600
+    cycle = data(call(api.governance_handler, '/projects/' + pid + '/payroll', 'POST', {'month': '2026-10'}))
+    assert cycle['staff'][0]['net'] == 600
+    assert call(api.workforce_handler, PATH, 'POST', {**advance, 'requestId': 'worker-advance-after-payroll'})['statusCode'] == 400
+    assert data(call(api.workforce_handler, PATH + '/' + wid, query=query))['summary']['deductions'] == 200
+
+
 def test_supervisor_profiles_are_project_scoped_and_bank_fields_hidden(app_database):
     call, pid, wid = registered(app_database)
     _, org, emp, sub = app_database

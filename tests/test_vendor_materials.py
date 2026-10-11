@@ -18,7 +18,8 @@ def supplier(ids):
 
 
 def payment(vendor, item, **extra):
-    return data(call(api.finance_handler, "/payments", "POST", dict(projectId=PROJECT_A, vendorId=vendor["vendorId"], materialId=item["itemId"], amount=40, mode="Cash", reference="cash-receipt", requestId="vendor-payment-001", **extra)))
+    body = dict(projectId=PROJECT_A, vendorId=vendor["vendorId"], materialId=item["itemId"], amount=40, mode="Cash", reference="cash-receipt", requestId="vendor-payment-001")
+    return data(call(api.finance_handler, "/payments", "POST", {**body, **extra}))
 
 
 def test_catalog_blocks_duplicates_and_retries_are_idempotent(database):
@@ -81,6 +82,45 @@ def test_payment_only_accepts_selected_vendors_catalog_material(database):
     assert (paid["material"], paid["materialUnit"], paid["vendorName"]) == ("Cement", "Bags", "Supplier")
     path = f"/projects/{PROJECT_A}/payments/" + paid["paymentId"]
     assert call(api.finance_handler, path, "PATCH", {"materialId": sand["itemId"]})["statusCode"] == 400
+
+
+def test_multiple_vendor_materials_are_available_for_payments(database):
+    cement, sand = material(), material("Sand", "Tons")
+    vendor = supplier([cement["itemId"], sand["itemId"]])
+    assert vendor["materialIds"] == [cement["itemId"], sand["itemId"]]
+    assert vendor["materialsSupplied"] == "Cement (Bags), Sand (Tons)"
+    assert payment(vendor, cement)["materialId"] == cement["itemId"]
+    assert payment(vendor, sand, requestId="vendor-payment-002")["materialId"] == sand["itemId"]
+    edited = data(call(api.supply_chain_handler, "/vendors/" + vendor["vendorId"], "PUT", {"materialIds": [sand["itemId"]]}))
+    assert edited["materialsSupplied"] == "Sand (Tons)"
+
+
+@pytest.mark.parametrize("scoped", [False, True])
+def test_cash_payment_needs_no_reference_and_can_be_approved(database, scoped):
+    cement = material()
+    vendor = supplier([cement["itemId"]])
+    endpoint = f"/projects/{PROJECT_A}/payments" if scoped else "/payments"
+    body = dict(projectId=PROJECT_A, vendorId=vendor["vendorId"], materialId=cement["itemId"], amount=40, mode="Cash", requestId="cash-without-reference")
+    paid = data(call(api.finance_handler, endpoint, "POST", body))
+    assert not paid.get("reference")
+    approved = data(call(api.finance_handler, endpoint + "/" + paid["paymentId"], "PATCH", {"status": "Approved"}))
+    assert approved["status"] == "Approved"
+    assert data(call(api.finance_handler, endpoint, "POST", body))["paymentId"] == paid["paymentId"]
+
+
+@pytest.mark.parametrize("mode", ["NEFT", "RTGS", "Cheque", "UPI"])
+@pytest.mark.parametrize("reference", [None, "", "   "])
+def test_non_cash_payment_requires_reference(database, mode, reference):
+    cement = material()
+    vendor = supplier([cement["itemId"]])
+    body = dict(projectId=PROJECT_A, vendorId=vendor["vendorId"], materialId=cement["itemId"], amount=40, mode=mode, requestId="non-cash-reference")
+    if reference is not None:
+        body["reference"] = reference
+    result = call(api.finance_handler, "/payments", "POST", body)
+    assert result["statusCode"] == 400
+    assert "reference" in result["body"]
+    body["reference"] = "TXN-123"
+    assert data(call(api.finance_handler, "/payments", "POST", body))["reference"] == "TXN-123"
 
 
 @pytest.mark.parametrize("scoped", [False, True])

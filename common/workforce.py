@@ -157,6 +157,77 @@ def labour(identity, method, body, query, pk, org, pid):
             audit.operation(identity, "worker.allocated", before=(prior), after=item),
         ])
         return clean(item)
+    if operation in {'advance_clear', 'advance_delete'}:
+        require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+        model.validate_id('record', body['advanceId'])
+        key = {'PK': pk, 'SK': f"WORKER-ADVANCE#{wid}#{day}#{body['advanceId']}"}
+        receipt_key = {'PK': pk, 'SK': 'WORKER-ADVANCE-ACTION#' + model.new_id('record', body['requestId'])}
+        action = {'operation': operation, 'workerId': wid, 'advanceId': body['advanceId'],
+                  'date': day, 'expectedVersion': body['expectedVersion']}
+        if operation == 'advance_clear':
+            action['amount'] = number(body.get('amount'), 'Amount to clear', True)
+        receipt = table.get_item(Key=receipt_key, ConsistentRead=True).get('Item')
+        if receipt:
+            if receipt['action'] != action:
+                raise ValueError('Request ID already used for a different advance action')
+            return clean(receipt['result'])
+        prior = table.get_item(Key=key, ConsistentRead=True).get('Item')
+        if not prior or prior.get('workerId') != wid or prior.get('entityType') != 'worker-advance':
+            raise ValueError('Advance does not exist for this worker and project')
+        if prior.get('status') in {'Deleted', 'Cleared'}:
+            raise ValueError('This advance has already been removed or cleared')
+        version = prior.get('version', 0)
+        if body['expectedVersion'] != version:
+            raise ValueError('Advance changed. Refresh the worker profile and try again.')
+        remaining = prior.get('remainingAmount', prior['amount'])
+        reduction = action['amount'] if operation == 'advance_clear' else remaining
+        if reduction > remaining:
+            raise ValueError('Amount to clear cannot exceed the remaining advance')
+        item = {**prior, 'remainingAmount': remaining - reduction, 'version': version + 1,
+                'updatedAt': now(), 'updatedBy': identity.user_id}
+        if operation == 'advance_delete':
+            item['status'] = 'Deleted'
+        else:
+            item['clearedAmount'] = prior.get('clearedAmount', 0) + reduction
+            item['status'] = 'Cleared' if item['remainingAmount'] == 0 else 'Active'
+        condition = 'attribute_exists(PK) AND ' + ('#version = :version' if 'version' in prior else 'attribute_not_exists(#version)')
+        put = {'TableName': table.name, 'Item': item, 'ConditionExpression': condition,
+               'ExpressionAttributeNames': {'#version': 'version'}}
+        if 'version' in prior:
+            put['ExpressionAttributeValues'] = {':version': version}
+        storage.transact(table, [
+            {'Put': put},
+            {'Put': {'TableName': table.name, 'Item': {**receipt_key, 'action': action, 'result': item},
+                     'ConditionExpression': 'attribute_not_exists(PK)'}},
+            {'Update': {'TableName': table.name, 'Key': {'PK': pk, 'SK': f'WORKER-ADVANCE-MONTH#{wid}#{day[:7]}'},
+                        'UpdateExpression': 'ADD amount :delta', 'ExpressionAttributeValues': {':delta': -reduction}}},
+            audit.operation(identity, 'worker.advance-cleared' if operation == 'advance_clear' else 'worker.advance-deleted', before=prior, after=item),
+        ])
+        return clean(item)
+    if operation == "advance":
+        require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+        amount = number(body.get('amount'), 'Advance amount', True)
+        description = str(body.get('description', '')).strip()
+        if not description:
+            raise ValueError('Advance description is required')
+        advance_id = model.new_id('record', body['requestId'])
+        item = {'PK': pk, 'SK': f'WORKER-ADVANCE#{wid}#{day}#{advance_id}',
+                'entityType': 'worker-advance', 'advanceId': advance_id, 'projectId': pid,
+                'workerId': wid, 'amount': amount, 'remainingAmount': amount, 'clearedAmount': 0, 'version': 0, 'status': 'Active', 'description': description, 'date': day,
+                'orgId': org, 'createdBy': identity.user_id, 'createdAt': now(), 'requestId': body['requestId']}
+        prior = table.get_item(Key={'PK': pk, 'SK': item['SK']}, ConsistentRead=True).get('Item')
+        if prior:
+            if any(prior.get(field) != item.get(field) for field in ('workerId', 'amount', 'description', 'date')):
+                raise ValueError('Request ID already used for a different advance')
+            return clean(prior)
+        # Separate records and totals: no wage, deduction or payroll writes.
+        storage.transact(table, [
+            {'Put': {'TableName': table.name, 'Item': item, 'ConditionExpression': 'attribute_not_exists(PK)'}},
+            {'Update': {'TableName': table.name, 'Key': {'PK': pk, 'SK': f'WORKER-ADVANCE-MONTH#{wid}#{day[:7]}'},
+                        'UpdateExpression': 'ADD amount :amount', 'ExpressionAttributeValues': {':amount': amount}}},
+            audit.operation(identity, 'worker.advance-recorded', after=item),
+        ])
+        return clean(item)
     cycle = get_table(("PAYROLL_TABLE")).get_item(Key={"PK": pk, "SK": f"PAYROLL#{day[:7]}"}, ConsistentRead=True).get("Item")
     if cycle:
         raise ValueError("Attendance and deductions are locked after the payroll cycle is generated")

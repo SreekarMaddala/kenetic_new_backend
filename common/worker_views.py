@@ -41,7 +41,7 @@ def profile(identity, table, org, pid, worker_id, query):
     first = date.fromisoformat(month + '-01')
     last = calendar.monthrange(first.year, first.month)[1]
     result = {'worker': {key: worker[key] for key in ('workerId', 'name', 'rate', 'type', 'createdAt') if key in worker},
-              'month': month, 'projectId': pid, 'attendance': [], 'summary': None}
+              'month': month, 'projectId': pid, 'attendance': [], 'summary': None, 'recordedAdvances': 0, 'advances': [], 'advancesHasMore': False}
     if not pid:
         # _pk has already rejected project-less supervisor requests.
         return result
@@ -53,6 +53,14 @@ def profile(identity, table, org, pid, worker_id, query):
                               ScanIndexForward=False, Limit=1, ConsistentRead=True).get('Items', [])
     if SUPERVISOR in identity.roles and not rows and (not allocations or allocations[0].get('projectId') != pid):
         raise AuthorizationError('Worker is not assigned to this project in the selected period')
+    advance_total = table.get_item(Key={'PK': pk, 'SK': f'WORKER-ADVANCE-MONTH#{worker_id}#{month}'}, ConsistentRead=True).get('Item', {})
+    result['recordedAdvances'] = advance_total.get('amount', 0)
+    advances = table.query(KeyConditionExpression=Key('PK').eq(pk) & Key('SK').begins_with(f'WORKER-ADVANCE#{worker_id}#{month}-'),
+                           ScanIndexForward=False, Limit=100, ConsistentRead=True)
+    result['advances'] = [{**{key: row[key] for key in ('advanceId', 'date', 'amount', 'description')},
+                           'remainingAmount': row.get('remainingAmount', row['amount']), 'clearedAmount': row.get('clearedAmount', 0),
+                           'version': row.get('version', 0)} for row in advances.get('Items', []) if row.get('status') not in {'Deleted', 'Cleared'}]
+    result['advancesHasMore'] = bool(advances.get('LastEvaluatedKey'))
     result['attendance'] = [{key: row[key] for key in ('date', 'status', 'nightShift', 'rate', 'wage', 'paymentStatus') if key in row} for row in rows]
     totals = table.get_item(Key={'PK': pk, 'SK': f'WORKER-MONTH#{month}#{worker_id}'}, ConsistentRead=True).get('Item', {})
     gross = sum(row['wage'] for row in rows)

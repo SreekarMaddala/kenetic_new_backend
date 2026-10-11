@@ -8,6 +8,8 @@ from common import contracts, model
 
 
 def ts_type(spec):
+    if spec['type'] == 'array' and spec.get('items'):
+        return 'Array<' + ts_type(spec['items']) + '>'
     if spec.get('enum'):
         return ' | '.join(json.dumps(value) for value in spec['enum'])
     if spec['type'] == 'object':

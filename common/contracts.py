@@ -25,7 +25,7 @@ SCHEMAS = {
     'milestone': fields('title owner description', 'progress', 'targetDate', enums={'status': ['Pending', 'In Progress', 'Completed', 'Archived']}),
     'subcontractor': fields('name contactPerson phone email trade address scopeOfWork unit description', 'contractValue quantity', 'startDate endDate requiredDate', ids={'registryId': 'subcontractor', 'contractorId': 'subcontractor'}, enums={'type': ['Contractor', 'Procurement'], 'status': ['Active', 'Inactive', 'Draft', 'Pending', 'Approved', 'Rejected']}),
     'attendance': {'location': {'type': 'object', 'properties': fields(numbers='latitude longitude accuracy'), 'required': ['latitude', 'longitude', 'accuracy']}},
-    'labour-attendance': fields('name type bankName accNo description correctionReason', 'rate amount', 'date', ids={'workerId': 'worker', 'labourAttendanceId': 'worker', 'targetProjectId': 'project'}, enums={'operation': ['register', 'allocate', 'attendance', 'debit'], 'status': ['Present', 'Half Day', 'Absent'], 'paymentStatus': ['Paid', 'Not paid']}, booleans='nightShift'),
+    'labour-attendance': fields('name type bankName accNo description correctionReason', 'rate amount', 'date', ids={'workerId': 'worker', 'labourAttendanceId': 'worker', 'targetProjectId': 'project', 'advanceId': 'record'}, enums={'operation': ['register', 'allocate', 'attendance', 'debit', 'advance', 'advance_clear', 'advance_delete'], 'status': ['Present', 'Half Day', 'Absent'], 'paymentStatus': ['Paid', 'Not paid']}, booleans='nightShift'),
     'dpr': fields('summary weather', 'labourCount', 'date', enums={'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
     'material': fields('materialName name unit priority description remarks', 'quantity qty', 'requiredDate date', enums={'status': ['pending', 'approved', 'rejected', 'issued', 'Pending', 'Approved', 'Rejected', 'Issued']}),
     'logistics-trip': fields('vehicle driver vendor material notes receipt operator registrationNumber type capacity', 'startKm endKm liters rate helper total', 'date', enums={'tripType': ['vehicle_registration', 'vehicle', 'fuel', 'rental'], 'status': ['Active', 'Inactive', 'Archived']}),
@@ -44,6 +44,17 @@ SCHEMAS = {
     'setting': fields('companyName cin primaryEmail phone address plan timezone currency', booleans='emailNotifications pushNotifications approvalNotifications'),
 }
 SCHEMAS['project']['supervisorIds'] = {'type': 'array', 'entity': 'user', 'maxItems': 80}
+SCHEMAS['project']['supervisorsTimeline'] = {
+    'type': 'array', 'maxItems': 100,
+    'items': {'type': 'object', 'properties': {
+        'name': {'type': 'string', 'maxLength': 128},
+        'phase': {'type': 'string', 'maxLength': 500},
+        'start': {'type': 'string', 'format': 'date'},
+        'end': {'type': 'string', 'format': 'date'},
+        'untilProjectEnd': {'type': 'boolean'},
+        'status': {'type': 'string', 'enum': ['Active', 'Upcoming', 'Completed']},
+    }, 'required': ['name', 'phase', 'start', 'end', 'status']},
+}
 SCHEMAS['vendor']['materialIds'] = {'type': 'array', 'entity': 'inventory-item', 'maxItems': 80}
 # Geographic coordinates have their own bounds.
 SCHEMAS['attendance']['location']['properties']['latitude'].update(minimum=-90, maximum=90)
@@ -58,7 +69,7 @@ REQUIRED = {
     'document': ['title', 'storageKey'], 'vendor': ['name'],
     'inventory-item': ['name', 'unit'], 'warehouse-event': ['item', 'unit', 'qty', 'requestId'],
     'bill': ['billNumber', 'clientOrContractor', 'grossAmount', 'requestId'],
-    'expense': ['description', 'amount', 'requestId'], 'payment': ['vendorId', 'materialId', 'amount', 'mode', 'reference', 'requestId'],
+    'expense': ['description', 'amount', 'requestId'], 'payment': ['vendorId', 'materialId', 'amount', 'mode', 'requestId'],
 }
 COMMON = fields(ids={'orgId': 'organization', 'projectId': 'project'})
 COMMON['requestId'] = {'type': 'string', 'pattern': r'[A-Za-z0-9_-]{8,80}'}
@@ -93,6 +104,12 @@ def check_value(key, value, spec):
     elif kind == 'boolean' and not isinstance(value, bool):
         raise ValueError(f'{key} must be boolean')
     elif kind == 'array':
+        if spec.get('items'):
+            if not isinstance(value, list) or len(value) > spec.get('maxItems', 100):
+                raise ValueError(f'{key} must be a list within its item limit')
+            for index, entry in enumerate(value):
+                check_value(f'{key}[{index}]', entry, spec['items'])
+            return
         if not isinstance(value, list) or len(value) > spec.get('maxItems', 100) or any(not isinstance(x, str) for x in value) or len(set(value)) != len(value):
             raise ValueError(f'{key} must contain unique IDs within its item limit')
         for entry in value:
@@ -146,9 +163,11 @@ def validate(resource, path, method, body, existing=None):
     for key in required:
         if key not in state or state[key] is None or (isinstance(state[key], str) and not state[key].strip()):
             raise ValueError(f'{key} is required')
+    if resource == 'payment' and not path.endswith('/reverse') and (method == 'POST' or existing is not None) and state.get('mode') != 'Cash' and not str(state.get('reference') or '').strip():
+        raise ValueError('Transaction / receipt reference is required for non-cash payments')
     if resource == 'labour-attendance':
         operation = body.get('operation', 'attendance' if body.get('workerId') or body.get('labourAttendanceId') else 'register')
-        necessary = {'register': ['name', 'rate'], 'allocate': ['date'], 'attendance': ['date', 'status'], 'debit': ['date', 'amount', 'description', 'requestId']}.get(operation)
+        necessary = {'register': ['name', 'rate'], 'allocate': ['date'], 'attendance': ['date', 'status'], 'debit': ['date', 'amount', 'description', 'requestId'], 'advance': ['date', 'amount', 'description', 'requestId'], 'advance_clear': ['date', 'advanceId', 'amount', 'expectedVersion', 'requestId'], 'advance_delete': ['date', 'advanceId', 'expectedVersion', 'requestId']}.get(operation)
         if necessary is None:
             raise ValueError('Invalid workforce operation')
         for key in necessary:
@@ -176,7 +195,10 @@ def validate(resource, path, method, body, existing=None):
 
 
 def export():
-    return {resource: {'type': 'object', 'additionalProperties': False, 'properties': request_schema(resource, '', 'POST')[0], 'required': REQUIRED.get(resource, [])} for resource in SCHEMAS}
+    schemas = {resource: {'type': 'object', 'additionalProperties': False, 'properties': request_schema(resource, '', 'POST')[0], 'required': REQUIRED.get(resource, [])} for resource in SCHEMAS}
+    schemas['payment']['allOf'] = [{'if': {'properties': {'mode': {'const': 'Cash'}}, 'required': ['mode']},
+                                  'else': {'required': ['reference'], 'properties': {'reference': {'pattern': r'.*\S.*'}}}}]
+    return schemas
 
 
 def fingerprint(body):

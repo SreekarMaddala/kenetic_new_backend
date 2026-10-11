@@ -44,3 +44,13 @@ def test_direct_record_access_cannot_bypass_month_limit(database):
 def test_month_boundary_uses_india_time(monkeypatch):
     monkeypatch.setattr(workflow_helpers, "now", lambda: "2026-08-31T18:30:00+00:00")
     assert workflow_helpers.logistics_month() == "2026-09"
+
+
+def test_vehicle_registration_preserves_model_and_plate_in_supported_fields(database):
+    body = {'tripType': 'vehicle_registration', 'vehicle': 'Tata Ace', 'registrationNumber': 'TS-09-AA-1234'}
+    saved = data(api.field_operations_handler(event(PATH, 'POST', body), None))
+    assert saved['vehicle'] == 'Tata Ace' and saved['registrationNumber'] == 'TS-09-AA-1234'
+    fleet = data(api.field_operations_handler(event(PATH), None))
+    assert any(row['tripId'] == saved['tripId'] and row['registrationNumber'] == body['registrationNumber'] for row in fleet)
+    project_fleet = data(api.field_operations_handler(event(PATH, query={'projectId': PROJECT_A}, **SITE), None))
+    assert any(row['tripId'] == saved['tripId'] and row['vehicle'] == body['vehicle'] for row in project_fleet)

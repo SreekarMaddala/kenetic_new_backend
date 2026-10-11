@@ -751,6 +751,11 @@
         "maxLength": 4000,
         "type": "string"
       },
+      "advanceId": {
+        "entity": "record",
+        "pattern": "^rec_[0-9a-f]{32}$",
+        "type": "string"
+      },
       "amount": {
         "maximum": 1000000000000,
         "minimum": 0,
@@ -793,7 +798,10 @@
           "register",
           "allocate",
           "attendance",
-          "debit"
+          "debit",
+          "advance",
+          "advance_clear",
+          "advance_delete"
         ],
         "type": "string"
       },
@@ -1193,6 +1201,30 @@
   },
   "payment": {
     "additionalProperties": false,
+    "allOf": [
+      {
+        "else": {
+          "properties": {
+            "reference": {
+              "pattern": ".*\\S.*"
+            }
+          },
+          "required": [
+            "reference"
+          ]
+        },
+        "if": {
+          "properties": {
+            "mode": {
+              "const": "Cash"
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        }
+      }
+    ],
     "properties": {
       "amount": {
         "maximum": 1000000000000,
@@ -1274,7 +1306,6 @@
       "materialId",
       "amount",
       "mode",
-      "reference",
       "requestId"
     ],
     "type": "object"
@@ -1436,6 +1467,49 @@
         "entity": "user",
         "maxItems": 80,
         "pattern": "^emp_[0-9a-f]{32}$",
+        "type": "array"
+      },
+      "supervisorsTimeline": {
+        "items": {
+          "properties": {
+            "end": {
+              "format": "date",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 128,
+              "type": "string"
+            },
+            "phase": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "start": {
+              "format": "date",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "Active",
+                "Upcoming",
+                "Completed"
+              ],
+              "type": "string"
+            },
+            "untilProjectEnd": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "phase",
+            "start",
+            "end",
+            "status"
+          ],
+          "type": "object"
+        },
+        "maxItems": 100,
         "type": "array"
       }
     },

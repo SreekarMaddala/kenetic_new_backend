@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Kinetic Construction ERP - Cognito Authentication Resources Stack
+  Kenetic ERP - Cognito Authentication Resources Stack
 
 Parameters:
   ProjectName:
@@ -27,8 +27,8 @@ Resources:
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
         InviteMessageTemplate:
-          EmailSubject: "Welcome to Kinetic ERP — Your Account Invitation"
-          EmailMessage: "Welcome to Kinetic ERP! Your account has been created. Your username is {username} and your temporary password is {####}. Please sign in to activate your account."
+          EmailSubject: "Welcome to Kenetic ERP - Your account invitation"
+          EmailMessage: "Welcome to Kenetic ERP! Your account has been created. Sign in using your work email, {username}, and your temporary password, {####}. You will be asked to choose a new password to activate your account."
       Policies:
         PasswordPolicy:
           MinimumLength: 12
