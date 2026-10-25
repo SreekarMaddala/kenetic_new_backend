@@ -781,6 +781,11 @@
         "minimum": 0,
         "type": "integer"
       },
+      "gangId": {
+        "entity": "worker-gang",
+        "pattern": "^gng_[0-9a-f]{32}$",
+        "type": "string"
+      },
       "labourAttendanceId": {
         "entity": "worker",
         "pattern": "^wor_[0-9a-f]{32}$",
@@ -801,7 +806,8 @@
           "debit",
           "advance",
           "advance_clear",
-          "advance_delete"
+          "advance_delete",
+          "gang_create"
         ],
         "type": "string"
       },
@@ -1225,6 +1231,43 @@
         }
       }
     ],
+    "oneOf": [
+      {
+        "not": {
+          "required": [
+            "contractorId"
+          ]
+        },
+        "required": [
+          "vendorId",
+          "materialId"
+        ]
+      },
+      {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "vendorId"
+              ]
+            },
+            {
+              "required": [
+                "materialId"
+              ]
+            },
+            {
+              "required": [
+                "billId"
+              ]
+            }
+          ]
+        },
+        "required": [
+          "contractorId"
+        ]
+      }
+    ],
     "properties": {
       "amount": {
         "maximum": 1000000000000,
@@ -1234,6 +1277,11 @@
       "billId": {
         "entity": "bill",
         "pattern": "^bil_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "contractorId": {
+        "entity": "subcontractor",
+        "pattern": "^sub_[0-9a-f]{32}$",
         "type": "string"
       },
       "date": {
@@ -1302,8 +1350,6 @@
       }
     },
     "required": [
-      "vendorId",
-      "materialId",
       "amount",
       "mode",
       "requestId"
@@ -1376,6 +1422,10 @@
       },
       "requestId": {
         "pattern": "[A-Za-z0-9_-]{8,80}",
+        "type": "string"
+      },
+      "settlementGroup": {
+        "maxLength": 4000,
         "type": "string"
       },
       "tds": {

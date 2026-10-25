@@ -23,13 +23,14 @@ def constraints(record, before=None, action='', proposed=None):
         'registryId': ('PARTIES_TABLE', f'ORG#{org}', 'SUBCONTRACTOR', 'subcontractor'),
         'contractorId': ('PARTIES_TABLE', f'ORG#{org}#PROJECT#{pid}', 'SUBCONTRACTOR', 'subcontractor'),
         'workerId': ('WORKFORCE_TABLE', f'ORG#{org}', 'WORKER', 'worker'),
+        'gangId': ('WORKFORCE_TABLE', f'ORG#{org}', 'GANG', 'worker-gang'),
         'employeeId': ('USERS_TABLE', f'ORG#{org}', 'USER', 'user'),
         'supervisorId': ('USERS_TABLE', f'ORG#{org}', 'USER', 'user'),
         'billId': ('FINANCE_TABLE', f'ORG#{org}#PROJECT#{pid}', 'BILL', 'bill'),
     }
     for field, (table_env, pk, prefix, entity) in refs.items():
         identifier = record.get(field)
-        if not identifier or (field == 'materialId' and kind == 'material') or (field == 'itemId' and kind == 'inventory-item') or (field == 'employeeId' and kind == 'user') or (field == 'workerId' and kind == 'worker'):
+        if not identifier or (field == 'materialId' and kind == 'material') or (field == 'itemId' and kind == 'inventory-item') or (field == 'employeeId' and kind == 'user') or (field == 'workerId' and kind == 'worker') or (field == 'gangId' and kind == 'worker-gang'):
             continue
         model.validate_id(entity, identifier)
         targets.append((table_env, {'PK': pk, 'SK': f'{prefix}#{identifier}'}, entity, 'status', set() if reversal else {'Inactive', 'Disabled', 'Archived', 'Suspended'}))

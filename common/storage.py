@@ -15,6 +15,12 @@ def contribution(record):
     status = str(record.get('status', '')).lower()
     if kind == 'daily-wage' and record.get('paymentStatus') == 'Paid':
         return Decimal(record.get('wage', 0))
+    if kind == 'worker-advance' and status != 'deleted':
+        return Decimal(record.get('remainingAmount', record.get('amount', 0)))
+    if kind == 'payroll-settlement' and status == 'paid':
+        return Decimal(record.get('amount', 0))
+    if kind == 'payroll' and record.get('settlementVersion'):
+        return Decimal(0)  # Individual settlement receipts post the cash exactly once.
     if (kind in {'expense', 'payment'} and status == 'approved') or (kind == 'payroll' and status == 'paid'):
         return Decimal(record.get('amount', 0))
     return Decimal(0)

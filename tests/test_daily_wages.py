@@ -28,7 +28,7 @@ def test_only_admin_can_unlock_attendance_and_each_date_requires_confirmation(da
     assert not next_day["allocationConfirmed"] and not next_day["allocationStarted"]
     assert call(api.workforce_handler, PATH, "POST", dict(body, date="2026-09-02"), **SITE)["statusCode"] == 403
     confirm(dict(body, date="2026-09-02"))
-    data(call(api.workforce_handler, PATH, "POST", dict(body, date="2026-09-02", status="Absent")))
+    data(call(api.workforce_handler, PATH, "POST", dict(body, date="2026-09-02", status="Absent"), **SITE))
     assert report("2026-09-02")[0]["daysPresent"] == 1
 
 @pytest.mark.parametrize("changes", [{"paymentStatus": "Partial"}, {"status": "Absent", "paymentStatus": "Paid"}, {"status": "Absent", "nightShift": True}, {"nightShift": "yes"}])

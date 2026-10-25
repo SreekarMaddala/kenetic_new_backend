@@ -48,6 +48,28 @@ def data(response):
     return json.loads(response['body'])['data']
 
 
+def record_attendance(db, body):
+    """Record a test wage as an active supervisor assigned to its project."""
+    org = db[1]
+    subject = '22222222-2222-4222-8222-222222222222'
+    supervisor = model.employee_id(subject)
+    get_table('USERS_TABLE').put_item(Item=model.index_item({
+        'PK': f'ORG#{org}', 'SK': f'USER#{supervisor}', 'orgId': org,
+        'employeeId': supervisor, 'cognitoSub': subject, 'role': 'supervisor',
+        'status': 'Active', 'name': 'Site supervisor', 'entityType': 'user',
+    }))
+    project_key = {'PK': f'ORG#{org}', 'SK': 'PROJECT#' + body['projectId']}
+    table = get_table('PROJECTS_TABLE')
+    project = table.get_item(Key=project_key)['Item']
+    table.update_item(Key=project_key, UpdateExpression='SET supervisorIds = :ids',
+                      ExpressionAttributeValues={':ids': list(set(project.get('supervisorIds', []) + [supervisor]))})
+    event = {'rawPath': '/supervisor/labour/attendance', 'body': json.dumps(body),
+             'requestContext': {'http': {'method': 'POST'}, 'authorizer': {'jwt': {'claims': {
+                 'sub': subject, 'custom:org_id': org, 'cognito:groups': ['supervisor'],
+             }}}}}
+    return api.workforce_handler(event, None)
+
+
 def test_prefixed_ids_identity_and_validation(app_database):
     call, org, emp, sub = app_database
     session = data(call(api.auth_handler, '/auth/me'))
@@ -68,11 +90,11 @@ def test_workforce_payroll_and_summary_transactions(app_database):
     assert worker['workerId'].startswith('wor_')
     body = {'projectId': pid, 'workerId': worker['workerId'], 'date': '2026-10-04', 'status': 'Half Day', 'nightShift': True}
     data(call(api.workforce_handler, path, 'POST', dict(body, operation='allocate')))
-    paid = data(call(api.workforce_handler, path, 'POST', dict(body, paymentStatus='Paid')))
+    paid = data(record_attendance(app_database, dict(body, paymentStatus='Paid')))
     assert paid['attendanceId'].startswith('att_') and paid['wage'] == 800
-    data(call(api.workforce_handler, path, 'POST', dict(body, paymentStatus='Paid')))
+    data(record_attendance(app_database, dict(body, paymentStatus='Paid')))
     assert data(call(api.projects_handler, '/projects/' + pid))['spent'] == 800
-    corrected = data(call(api.workforce_handler, path, 'POST', dict(body, paymentStatus='Not paid', expectedVersion=paid['version'], correctionReason='Payment not completed')))
+    corrected = data(record_attendance(app_database, dict(body, paymentStatus='Not paid', expectedVersion=paid['version'], correctionReason='Payment not completed')))
     assert corrected['wage'] == 800
     assert data(call(api.projects_handler, '/projects/' + pid))['spent'] == 0
     cycle_path = '/projects/' + pid + '/payroll'

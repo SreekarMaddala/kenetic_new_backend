@@ -5,7 +5,7 @@ import time
 from datetime import date
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
-from common import model, payroll_records
+from common import model, payroll_records, payroll_settlement
 from common.authz import AuthorizationError, SUPERVISOR
 from common.dynamo import get_table
 
@@ -69,11 +69,19 @@ def profile(identity, table, org, pid, worker_id, query):
     payroll_paid = 0
     payroll = get_table('PAYROLL_TABLE')
     cycle = payroll.get_item(Key={'PK': pk, 'SK': 'PAYROLL#' + month}, ConsistentRead=True).get('Item')
-    if cycle and cycle.get('status') == 'Paid':
-        entry = payroll_records.employee_entry(payroll, cycle, worker_id)
-        payroll_paid = (entry or {}).get('net', 0)
+    entry = payroll_records.employee_entry(payroll, cycle, worker_id) if cycle else None
+    result['advancesLocked'] = bool(cycle)
+    recovery = (entry or {}).get('advanceRecovery', 0) if cycle else result['recordedAdvances']
+    deductions += recovery
+    if entry and payroll_settlement.member_paid(cycle, entry):
+        payroll_paid = entry.get('net', 0)
+        if cycle.get('advanceRecoveryVersion'):
+            result['recordedAdvances'] = 0
+            result['advances'] = []
+            result['advancesHasMore'] = False
     result['summary'] = {'daysPresent': sum({'Present': 1, 'Half Day': Decimal('0.5')}.get(row['status'], 0) for row in rows),
                          'grossWages': gross, 'dailyPaid': daily_paid, 'payrollPaid': payroll_paid, 'deductions': deductions,
+                         'advanceRecovery': recovery,
                          'outstanding': max(0, gross - daily_paid - deductions - payroll_paid),
                          'payrollStatus': cycle.get('status') if cycle else 'Not generated'}
     return result

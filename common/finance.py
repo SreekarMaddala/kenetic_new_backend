@@ -69,6 +69,13 @@ def reverse_financial(table, identity, resource, existing, body):
 
 
 def payment_material(body, org, pk):
+    if body.get('contractorId'):
+        contractor = get_table('PARTIES_TABLE').get_item(
+            Key={'PK': pk, 'SK': 'SUBCONTRACTOR#' + body['contractorId']}, ConsistentRead=True).get('Item')
+        if not contractor or contractor.get('orgId') != org or contractor.get('type') != 'Contractor' or contractor.get('status') != 'Active':
+            raise ValueError('Choose an active subcontractor assigned to this project')
+        body['contractorName'] = contractor['name']
+        return
     vendor = get_table("PARTIES_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"VENDOR#{body.get('vendorId', '')}"}, ConsistentRead=True).get("Item")
     if not vendor or vendor.get("orgId") != org:
         raise ValueError("Choose a vendor in this organization")

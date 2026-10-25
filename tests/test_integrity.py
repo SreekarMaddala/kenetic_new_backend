@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from unittest.mock import patch
 import pytest
-from test_model import app_database, data
+from test_model import app_database, data, record_attendance
 from common import audit, model, payroll_records, reconciliation, relationships, storage, workflows
 from common.authz import Identity
 from common.dynamo import get_table
@@ -230,11 +230,11 @@ def test_worker_month_cache_correction_and_repair(app_database):
     worker = data(call(api.workforce_handler, path, 'POST', {'projectId': pid, 'name': 'Worker', 'rate': 800}))
     body = {'projectId': pid, 'workerId': worker['workerId'], 'date': '2026-10-04', 'status': 'Half Day', 'nightShift': True}
     data(call(api.workforce_handler, path, 'POST', dict(body, operation='allocate')))
-    saved = data(call(api.workforce_handler, path, 'POST', dict(body, paymentStatus='Paid')))
+    saved = data(record_attendance(app_database, dict(body, paymentStatus='Paid')))
     query = {'projectId': pid, 'date': '2026-10-04', 'roster': 'true'}
     roster = data(call(api.workforce_handler, path, query=query))[0]
     assert (roster['grossWages'], roster['dailyPaid'], roster['daysPresent'], roster['nightShifts']) == (800, 800, 0.5, 1)
-    data(call(api.workforce_handler, path, 'POST', dict(body, status='Present', nightShift=False, paymentStatus='Not paid', expectedVersion=saved['version'], correctionReason='Corrected shift')))
+    data(record_attendance(app_database, dict(body, status='Present', nightShift=False, paymentStatus='Not paid', expectedVersion=saved['version'], correctionReason='Corrected shift')))
     roster = data(call(api.workforce_handler, path, query=query))[0]
     assert (roster['grossWages'], roster['dailyPaid'], roster['daysPresent'], roster['nightShifts']) == (800, 0, 1, 0)
     key = {'PK': f'ORG#{org}#PROJECT#{pid}', 'SK': f"WORKER-MONTH#2026-10#{worker['workerId']}"}

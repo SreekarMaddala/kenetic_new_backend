@@ -9,6 +9,18 @@ from common.dynamo import get_table
 from common.workflow_helpers import clean, daily_wage, now, number, re_id, rows
 
 
+def advance_lock(table, pk, month):
+    payroll = get_table('PAYROLL_TABLE')
+    key = {'PK': pk, 'SK': 'PAYROLL#' + month}
+    if payroll.get_item(Key=key, ConsistentRead=True).get('Item'):
+        raise ValueError('Advances are locked by the payroll register. Reopen the unpaid cycle before changing advances.')
+    return [
+        {'ConditionCheck': {'TableName': payroll.name, 'Key': key, 'ConditionExpression': 'attribute_not_exists(PK)'}},
+        {'Update': {'TableName': table.name, 'Key': {'PK': pk, 'SK': 'MONTH#' + month},
+                    'UpdateExpression': 'ADD revision :one', 'ExpressionAttributeValues': {':one': 1}}},
+    ]
+
+
 def labour_list(table, pk, day, roster=False, selected_workers=None):
     date.fromisoformat(day)
     org, pid = pk.removeprefix("ORG#").split("#PROJECT#", 1)
@@ -88,7 +100,7 @@ def labour(identity, method, body, query, pk, org, pid):
             workers = (rows(table, f'ORG#{org}', 'WORKER#'))
             return [clean(w) for w in workers]
         operation = body.get("operation", "attendance" if body.get("workerId") or body.get("labourAttendanceId") else "register")
-        if method != "POST" or operation != "register":
+        if method != "POST" or operation not in {"register", "gang_create"}:
             raise ValueError("A projectId is required for allocation and attendance")
     if method == "GET":
         roster = query.get("roster") == "true"
@@ -107,6 +119,24 @@ def labour(identity, method, body, query, pk, org, pid):
     if body.get('requestId') and not re_id(str(body['requestId'])):
         raise ValueError('Invalid requestId')
     operation = body.get("operation", "attendance" if body.get("workerId") or body.get("labourAttendanceId") else "register")
+    if operation == 'gang_create':
+        require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+        if pid:
+            raise ValueError('Create gangs from the organization Workers page')
+        name = ' '.join(str(body.get('name', '')).split())
+        if not name or len(name) > 128:
+            raise ValueError('Enter a gang name of up to 128 characters')
+        gang_id = model.new_id('worker-gang', name.casefold())
+        gang_key = {'PK': f'ORG#{org}', 'SK': 'GANG#' + gang_id}
+        existing = table.get_item(Key=gang_key, ConsistentRead=True).get('Item')
+        if existing:
+            return clean(existing)
+        gang = {**gang_key, 'gangId': gang_id, 'name': name, 'entityType': 'worker-gang',
+                'orgId': org, 'status': 'Active', 'createdAt': now(), 'createdBy': identity.user_id}
+        audit.put(table, identity, gang, ConditionExpression='attribute_not_exists(PK)')
+        return clean(gang)
+    if operation == "attendance":
+        require_role(identity, SUPERVISOR)
     wid = body.get('workerId') or body.get('labourAttendanceId') or ((model.new_id('worker', body.get('requestId'))))
     model.validate_id('worker', wid)
     key = {"PK": (f'ORG#{org}'), "SK": (f'WORKER#{wid}')}
@@ -119,8 +149,13 @@ def labour(identity, method, body, query, pk, org, pid):
         item = {**key, "labourAttendanceId": wid, "workerId": wid, "name": body["name"], "rate": rate, "type": body.get("type", "Skilled"),
                 "bankName": body.get("bankName", ""), "accNo": body.get("accNo", ""), "entityType": "worker", "orgId": org,
                 "projectId": pid, "createdAt": now(), "createdBy": identity.user_id}
+        if body.get('gangId'):
+            gang = table.get_item(Key={'PK': f'ORG#{org}', 'SK': 'GANG#' + body['gangId']}, ConsistentRead=True).get('Item')
+            if not gang or gang.get('orgId') != org or gang.get('status') != 'Active':
+                raise ValueError('Choose an active gang in this organization')
+            item.update(gangId=gang['gangId'], gangName=gang['name'])
         if (worker):
-            if any(worker.get(field) != item.get(field) for field in ('name', 'rate', 'type', 'bankName', 'accNo', 'projectId')):
+            if any(worker.get(field) != item.get(field) for field in ('name', 'rate', 'type', 'bankName', 'accNo', 'projectId', 'gangId')):
                 raise ValueError('Worker ID already used for different data')
             return clean(worker)
         audit.put(table, identity, item, ConditionExpression="attribute_not_exists(PK)")
@@ -195,7 +230,7 @@ def labour(identity, method, body, query, pk, org, pid):
                'ExpressionAttributeNames': {'#version': 'version'}}
         if 'version' in prior:
             put['ExpressionAttributeValues'] = {':version': version}
-        storage.transact(table, [
+        storage.transact(table, advance_lock(table, pk, day[:7]) + [
             {'Put': put},
             {'Put': {'TableName': table.name, 'Item': {**receipt_key, 'action': action, 'result': item},
                      'ConditionExpression': 'attribute_not_exists(PK)'}},
@@ -220,8 +255,8 @@ def labour(identity, method, body, query, pk, org, pid):
             if any(prior.get(field) != item.get(field) for field in ('workerId', 'amount', 'description', 'date')):
                 raise ValueError('Request ID already used for a different advance')
             return clean(prior)
-        # Separate records and totals: no wage, deduction or payroll writes.
-        storage.transact(table, [
+        # Advances remain separate cash records; payroll snapshots recover them.
+        storage.transact(table, advance_lock(table, pk, day[:7]) + [
             {'Put': {'TableName': table.name, 'Item': item, 'ConditionExpression': 'attribute_not_exists(PK)'}},
             {'Update': {'TableName': table.name, 'Key': {'PK': pk, 'SK': f'WORKER-ADVANCE-MONTH#{wid}#{day[:7]}'},
                         'UpdateExpression': 'ADD amount :amount', 'ExpressionAttributeValues': {':amount': amount}}},

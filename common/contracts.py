@@ -39,8 +39,8 @@ SCHEMAS = {
     'warehouse-event': fields('item materialName unit vendor issuedTo', 'qty quantity rate', 'date', ids={'targetProjectId': 'project', 'indentId': 'material'}),
     'bill': fields('billNumber clientOrContractor type remarks adjustmentReason', 'grossAmount netPayable retentionDeduction tdsDeduction', 'date periodFrom periodTo', ids={'vendorId': 'vendor', 'documentId': 'document'}, enums={'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
     'expense': fields('category description submittedBy', 'amount', 'date', ids={'supervisorId': 'user'}, enums={'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
-    'payment': fields('description reference', 'amount', 'date', ids={'vendorId': 'vendor', 'materialId': 'inventory-item', 'billId': 'bill'}, enums={'mode': ['NEFT', 'RTGS', 'Cheque', 'Cash', 'UPI'], 'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
-    'payroll': fields('month reference expectedCreatedAt', ids={'employeeId': 'user'}, numbers='basic hra conveyance medical pf esi tds'),
+    'payment': fields('description reference', 'amount', 'date', ids={'vendorId': 'vendor', 'materialId': 'inventory-item', 'billId': 'bill', 'contractorId': 'subcontractor'}, enums={'mode': ['NEFT', 'RTGS', 'Cheque', 'Cash', 'UPI'], 'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
+    'payroll': fields('month reference expectedCreatedAt settlementGroup', ids={'employeeId': 'user'}, numbers='basic hra conveyance medical pf esi tds'),
     'setting': fields('companyName cin primaryEmail phone address plan timezone currency', booleans='emailNotifications pushNotifications approvalNotifications'),
 }
 SCHEMAS['project']['supervisorIds'] = {'type': 'array', 'entity': 'user', 'maxItems': 80}
@@ -56,6 +56,8 @@ SCHEMAS['project']['supervisorsTimeline'] = {
     }, 'required': ['name', 'phase', 'start', 'end', 'status']},
 }
 SCHEMAS['vendor']['materialIds'] = {'type': 'array', 'entity': 'inventory-item', 'maxItems': 80}
+SCHEMAS['labour-attendance']['gangId'] = {'type': 'string', 'entity': 'worker-gang'}
+SCHEMAS['labour-attendance']['operation']['enum'].append('gang_create')
 # Geographic coordinates have their own bounds.
 SCHEMAS['attendance']['location']['properties']['latitude'].update(minimum=-90, maximum=90)
 SCHEMAS['attendance']['location']['properties']['longitude'].update(minimum=-180, maximum=180)
@@ -69,7 +71,7 @@ REQUIRED = {
     'document': ['title', 'storageKey'], 'vendor': ['name'],
     'inventory-item': ['name', 'unit'], 'warehouse-event': ['item', 'unit', 'qty', 'requestId'],
     'bill': ['billNumber', 'clientOrContractor', 'grossAmount', 'requestId'],
-    'expense': ['description', 'amount', 'requestId'], 'payment': ['vendorId', 'materialId', 'amount', 'mode', 'requestId'],
+    'expense': ['description', 'amount', 'requestId'], 'payment': ['amount', 'mode', 'requestId'],
 }
 COMMON = fields(ids={'orgId': 'organization', 'projectId': 'project'})
 COMMON['requestId'] = {'type': 'string', 'pattern': r'[A-Za-z0-9_-]{8,80}'}
@@ -165,9 +167,17 @@ def validate(resource, path, method, body, existing=None):
             raise ValueError(f'{key} is required')
     if resource == 'payment' and not path.endswith('/reverse') and (method == 'POST' or existing is not None) and state.get('mode') != 'Cash' and not str(state.get('reference') or '').strip():
         raise ValueError('Transaction / receipt reference is required for non-cash payments')
+    if resource == 'payment' and not path.endswith('/reverse') and (method == 'POST' or existing is not None):
+        if state.get('contractorId'):
+            if any(state.get(key) for key in ('vendorId', 'materialId', 'billId')):
+                raise ValueError('Subcontractor payments cannot include vendor, material or vendor bill links')
+        elif not state.get('vendorId') or not state.get('materialId'):
+            raise ValueError('Select a vendor and material, or an assigned subcontractor')
     if resource == 'labour-attendance':
+        if 'amount' in body and Decimal(body['amount']) != Decimal(body['amount']).quantize(Decimal('0.01')):
+            raise ValueError('Amount must have at most two decimal places')
         operation = body.get('operation', 'attendance' if body.get('workerId') or body.get('labourAttendanceId') else 'register')
-        necessary = {'register': ['name', 'rate'], 'allocate': ['date'], 'attendance': ['date', 'status'], 'debit': ['date', 'amount', 'description', 'requestId'], 'advance': ['date', 'amount', 'description', 'requestId'], 'advance_clear': ['date', 'advanceId', 'amount', 'expectedVersion', 'requestId'], 'advance_delete': ['date', 'advanceId', 'expectedVersion', 'requestId']}.get(operation)
+        necessary = {'gang_create': ['name'], 'register': ['name', 'rate'], 'allocate': ['date'], 'attendance': ['date', 'status'], 'debit': ['date', 'amount', 'description', 'requestId'], 'advance': ['date', 'amount', 'description', 'requestId'], 'advance_clear': ['date', 'advanceId', 'amount', 'expectedVersion', 'requestId'], 'advance_delete': ['date', 'advanceId', 'expectedVersion', 'requestId']}.get(operation)
         if necessary is None:
             raise ValueError('Invalid workforce operation')
         for key in necessary:
@@ -179,7 +189,7 @@ def validate(resource, path, method, body, existing=None):
         if necessary is None or any(key not in body or body[key] == '' for key in necessary):
             raise ValueError('Required transport fields are missing')
     if existing and resource in {'bill', 'payment'}:
-        immutable = ('billNumber', 'vendorId', 'clientOrContractor') if resource == 'bill' else ('vendorId', 'materialId', 'billId', 'mode', 'reference')
+        immutable = ('billNumber', 'vendorId', 'clientOrContractor') if resource == 'bill' else ('vendorId', 'materialId', 'billId', 'contractorId', 'mode', 'reference')
         if any(key in body and body[key] != existing.get(key) for key in immutable):
             raise ValueError('Financial identity fields cannot be changed; reject or reverse the record')
     if existing and existing.get('status') == 'Archived' and set(body) - {'status', 'expectedVersion'}:
@@ -198,6 +208,10 @@ def export():
     schemas = {resource: {'type': 'object', 'additionalProperties': False, 'properties': request_schema(resource, '', 'POST')[0], 'required': REQUIRED.get(resource, [])} for resource in SCHEMAS}
     schemas['payment']['allOf'] = [{'if': {'properties': {'mode': {'const': 'Cash'}}, 'required': ['mode']},
                                   'else': {'required': ['reference'], 'properties': {'reference': {'pattern': r'.*\S.*'}}}}]
+    schemas['payment']['oneOf'] = [
+        {'required': ['vendorId', 'materialId'], 'not': {'required': ['contractorId']}},
+        {'required': ['contractorId'], 'not': {'anyOf': [{'required': [key]} for key in ('vendorId', 'materialId', 'billId')]}},
+    ]
     return schemas
 
 

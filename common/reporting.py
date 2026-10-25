@@ -44,16 +44,17 @@ def project_totals(projects, org, period=None):
 def spending_ledger(identity, org, pid):
     require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
     result = []
-    labels = {"expense": "Direct Expense", "payment": "Vendor Payment", "payroll": "Payroll Settlement", "daily-wage": "Daily Wage Payment"}
+    labels = {"expense": "Direct Expense", "payment": "Vendor Payment", "payroll": "Payroll Settlement", "payroll-settlement": "Payroll Settlement", "daily-wage": "Daily Wage Payment", "worker-advance": "Worker Advance"}
     sources = ([item for env in ('FINANCE_TABLE', 'WORKFORCE_TABLE', 'PAYROLL_TABLE') for item in rows(get_table(env), f'ORG#{org}#PROJECT#{pid}', '') if storage.contribution(item)])
     for item in sources:
         if item.get("projectId") != pid:
             continue
         kind = item["entityType"]
-        result.append({"id": item["SK"], "source": labels[kind], "date": str(item.get("date") or item.get("paidAt") or item.get("approvedAt") or item.get("createdAt") or "")[:10],
-                       "amount": item.get("wage", 0) if kind == "daily-wage" else item.get("amount", 0),
-                       "description": item.get("description") or item.get("vendorName") or item.get("month") or item.get("labourId") or labels[kind],
-                       "status": "Paid" if kind in {"payroll", "daily-wage"} else "Approved", "projectId": pid})
+        label = 'Subcontractor Payment' if kind == 'payment' and item.get('contractorId') else labels[kind]
+        result.append({"id": item["SK"], "source": label, "date": str(item.get("date") or item.get("paidAt") or item.get("approvedAt") or item.get("createdAt") or "")[:10],
+                       "amount": storage.contribution(item),
+                       "description": item.get("description") or item.get('contractorName') or item.get("vendorName") or item.get("month") or item.get("labourId") or label,
+                       "status": "Paid" if kind in {"payroll", "payroll-settlement", "daily-wage", "worker-advance"} else "Approved", "projectId": pid})
     project = get_table("PROJECTS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"PROJECT#{pid}"}, ConsistentRead=True)["Item"]
     opening = project.get("openingSpent", project.get("spent", 0))
     if opening:

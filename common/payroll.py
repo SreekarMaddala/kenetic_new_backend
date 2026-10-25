@@ -1,6 +1,6 @@
 """Salary configuration, immutable payroll generation and settlement."""
 from common.authz import AuthorizationError, OPERATIONS_ADMIN, SUPER_ADMIN, require_role
-from common import audit, model, payroll_records, storage
+from common import audit, model, payroll_records, payroll_settlement, storage, worker_views
 from datetime import date
 from common.dynamo import get_table
 import uuid
@@ -22,9 +22,9 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
             cycle['staff'] = [member] if member else []
             for member in cycle.get("staff", []):
                 if member.get("labourId") == identity.user_id and member.get("salary"):
-                    history.append({"month": cycle["month"], "status": cycle["status"],
+                    history.append({"month": cycle["month"], "status": 'Paid' if payroll_settlement.member_paid(cycle, member) else 'Pending',
                                     "gross": member["gross"], "deductions": member["deductions"],
-                                    "net": member["net"], "paidAt": cycle.get("paidAt")})
+                                    "net": member["net"], "paidAt": cycle.get('paidGroups', {}).get('staff', {}).get('paidAt', cycle.get("paidAt"))})
         return {"profile": clean(profile) if profile else None, "history": sorted(history, key=lambda item: item["month"], reverse=True)}
     if method == "DELETE":
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
@@ -32,7 +32,7 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
         date.fromisoformat(month + "-01")
         key = {"PK": pk, "SK": f"PAYROLL#{month}"}
         old = table.get_item(Key=key, ConsistentRead=True).get("Item")
-        if not old or old.get("status") != "Pending":
+        if not old or old.get("status") != "Pending" or old.get('paidGroups'):
             raise ValueError("Only unpaid payroll cycles can be reopened")
         archived = dict(old, SK=f"PAYROLL-HISTORY#{month}#{uuid.uuid4().hex}", entityType="payroll-history", reopenedAt=now(), reopenedBy=identity.user_id)
         storage.transact(table, [
@@ -93,18 +93,7 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
             raise ValueError("Use POST to record payroll settlement")
         if not old:
             raise ValueError("Generate and review this payroll cycle first")
-        payroll_records.expand(table, old)  # Verify the snapshot before recording money.
-        if body.get("expectedCreatedAt") is not None and body["expectedCreatedAt"] != old["createdAt"]:
-            raise ValueError("Payroll was regenerated. Refresh and review the current cycle before recording payment.")
-        if old.get("status") == "Paid":
-            return clean(payroll_records.expand(table, old))
-        if not str(body.get("reference", "")).strip():
-            raise ValueError("An external payment reference is required")
-        updated = dict(old, status="Paid", paymentReference=body["reference"].strip(), paidAt=now(), paidBy=identity.user_id)
-        audit.put(table, identity, updated, before=old, action="payroll.settled",
-                  ConditionExpression="#s = :pending AND createdAt = :created", ExpressionAttributeNames={"#s": "status"},
-                  ExpressionAttributeValues={":pending": "Pending", ":created": old["createdAt"]})
-        return clean(payroll_records.expand(table, updated))
+        return payroll_settlement.settle(table, identity, old, body)
     if method != "POST":
         raise ValueError("Payroll cycles are immutable")
     if old:
@@ -115,13 +104,21 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
     salary_revision_key = {"PK": pk, "SK": "SALARY-REVISION"}
     salary_revision = table.get_item(Key=salary_revision_key, ConsistentRead=True).get("Item", {}).get("revision")
     workers = labour_list(workforce, pk, month + "-01")
+    advance_totals = worker_views.batch_rows(workforce, [
+        {'PK': pk, 'SK': f"WORKER-ADVANCE-MONTH#{worker['workerId']}#{month}"} for worker in workers
+    ])
     staff = []
     for w in workers:
         gross = w["grossWages"]
-        if w["advanceDeductions"] + w["dailyPaid"] > gross:
+        advances = advance_totals.get((pk, f"WORKER-ADVANCE-MONTH#{w['workerId']}#{month}"), {}).get('amount', 0)
+        deductions = w['advanceDeductions'] + advances
+        if deductions + w["dailyPaid"] > gross:
             raise ValueError(f"Deductions exceed wages for {w['name']}; correct deductions before generating payroll")
         staff.append({"labourId": w["labourAttendanceId"], "name": w["name"], "type": w.get("type", "Labour"), "rate": w["rate"], "daysPresent": w["daysPresent"],
-                      "nightShifts": w["nightShifts"], "gross": gross, "deductions": w["advanceDeductions"], "dailyPaid": w["dailyPaid"], "net": gross - w["advanceDeductions"] - w["dailyPaid"]})
+                      "gangId": w.get('gangId', ''), "gangName": w.get('gangName', 'Individual workers'),
+                      "nightShifts": w["nightShifts"], "gross": gross, "deductions": deductions,
+                      "advanceRecovery": advances, "otherDeductions": w['advanceDeductions'],
+                      "dailyPaid": w["dailyPaid"], "net": gross - deductions - w["dailyPaid"]})
     profiles = rows(table, pk, "SALARY#")
     employees = _batch_get(get_table("USERS_TABLE"), [
         {"PK": f"ORG#{org}", "SK": f"USER#{profile['employeeId']}"} for profile in profiles
@@ -136,7 +133,8 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
     if not staff:
         raise ValueError("Register workers or configure staff salaries first")
     item = {**key, "cycleId": (model.new_id("payroll")), "month": month, "projectId": pid, "orgId": org, "entityType": "payroll", "status": "Pending",
-            "staff": staff, "amount": sum(w["net"] for w in staff), "createdAt": now(), "createdBy": identity.user_id}
+            "staff": staff, "amount": sum(w["net"] for w in staff), "createdAt": now(), "createdBy": identity.user_id,
+            "settlementVersion": 1, "advanceRecoveryVersion": 1, "paidAmount": 0, "paidGroups": {}}
     build = (payroll_records.save_entries(table, item))
     check = {"TableName": workforce.name, "Key": revision_key, "ConditionExpression": "attribute_not_exists(revision)" if revision is None else "revision = :revision"}
     if revision is not None:

@@ -20,6 +20,36 @@ Payroll generation is `POST /projects/{projectId}/payroll` with a `month`.
 It returns the completed cycle; repeating the same month returns the existing
 cycle. Salary snapshots and settlement checks remain in place.
 
+Subcontractors can be edited in the global registry and their scope, value and
+dates can be edited on the project assignment. Project payments accept either a
+vendor/material pair or an active assigned `contractorId`. Subcontractor
+payments use the same approval, reversal, audit and spending rules as vendor
+payments.
+
+New payroll registers deduct the selected project/month's remaining worker
+advances as well as existing deductions and daily wages already paid. Advances
+post cash spending when recorded; payroll settlement posts only the remaining
+wages. Repaid or deleted advances adjust that spending. Advances cannot be
+changed after generation; reopen a completely unpaid cycle to correct them.
+Payroll rejects deductions that exceed earned wages. Advances are scoped to
+their recorded month and project; they do not automatically roll forward.
+
+The payroll disbursement request accepts `settlementGroup`: a saved gang ID,
+`ungrouped`, `staff`, or `all` (default). `all` pays only groups still unpaid.
+Each settlement saves a receipt and updates the cycle atomically. Partially paid
+cycles cannot be reopened. The monthly CSV includes groups, advance recovery,
+daily payments, final wages and each group's payment status/reference. The
+logistics page exports dated transport, mileage and fuel records for its
+selected period.
+
+Existing payroll snapshots keep their original figures. Reopen and regenerate
+unpaid registers to include automatic advance recovery. Before relying on
+spending summaries after upgrading a populated environment, preview and apply
+`scripts/maintain_data.py reconcile-spending` for each affected project using
+the existing account/actor checks; old advance records were not previously
+included in derived spending. This change requires both backend and frontend
+deployment, but no new tables or API Gateway routes.
+
 Financial reports use `GET /reports/executive` with optional `startDate` and
 `endDate`. The frontend creates the CSV download from that response.
 There are no queue workers, scheduled dispatchers or job polling endpoints.
@@ -54,9 +84,7 @@ and `npm run build` to check the application build.
 For deployment, prepare the template before building:
 
 ```powershell
-python scripts/prepare_deploy.py
-sam build --cached --template-file .aws-sam/prepared-template.yaml
-sam deploy --config-env dev --config-file ../../samconfig.toml --template-file .aws-sam/build/template.yaml
+python scripts/deploy.py
 ```
 
 The source template keeps explicit HTTP methods so API Gateway handles OPTIONS

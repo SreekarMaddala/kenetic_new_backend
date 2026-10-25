@@ -4,7 +4,7 @@ import re
 import uuid
 
 PREFIXES = {
-    'organization': 'org', 'user': 'emp', 'project': 'pro', 'worker': 'wor',
+    'organization': 'org', 'user': 'emp', 'project': 'pro', 'worker': 'wor', 'worker-gang': 'gng',
     'milestone': 'mil', 'boq': 'boq', 'subcontractor': 'sub', 'attendance': 'att',
     'labour-attendance': 'wor', 'daily-wage': 'att', 'dpr': 'dpr', 'material': 'mat',
     'logistics-trip': 'tri', 'issue': 'iss', 'inspection': 'ins', 'equipment': 'equ',

@@ -431,6 +431,12 @@ def _domain_handler(domain, event, context):
         record_id = _item_id(path, resource)
         if (method == 'GET' and resource == 'labour-attendance'):
             from common import worker_views
+            if query.get('gangs') == 'true':
+                require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+                if project_id or record_id:
+                    raise ValueError('Manage gangs from the organization Workers page')
+                items, meta = pagination.page(table, query, [identity.user_id, org_id, path, 'gangs'], pk='ORG#' + org_id, prefix='GANG#')
+                return _response(200, {'success': True, 'data': [_clean(item) for item in items], 'pagination': meta})
             if record_id:
                 return _response(200, {'success': True, 'data': worker_views.profile(identity, table, org_id, project_id, record_id, query)})
             day = str(query.get('date') or workflow_helpers.now()[:10])
@@ -625,7 +631,7 @@ def _domain_handler(domain, event, context):
                 elif data:
                     merged = {**existing, **data}
                     finance.payment_material(merged, org_id, pk)
-                    data.update({k: merged[k] for k in ("vendorName", "material", "materialUnit")})
+                    data.update({k: merged[k] for k in ("vendorName", "material", "materialUnit", "contractorName") if k in merged})
             if resource == "subcontractor":
                 workflow_validation.validate_subcontractor(data, org_id, pk, project_id, existing)
             workflow_validation.validate_transition(identity, resource, existing, data)
