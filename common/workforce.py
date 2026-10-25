@@ -141,7 +141,7 @@ def labour(identity, method, body, query, pk, org, pid):
     model.validate_id('worker', wid)
     key = {"PK": (f'ORG#{org}'), "SK": (f'WORKER#{wid}')}
     worker = table.get_item(Key=key, ConsistentRead=True).get("Item")
-    if operation == "register":
+    if operation in {"register", "register_allocate"}:
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         if not str(body.get("name", "")).strip():
             raise ValueError("Worker name is required")
@@ -154,10 +154,32 @@ def labour(identity, method, body, query, pk, org, pid):
             if not gang or gang.get('orgId') != org or gang.get('status') != 'Active':
                 raise ValueError('Choose an active gang in this organization')
             item.update(gangId=gang['gangId'], gangName=gang['name'])
+        if operation == 'register_allocate':
+            item['onboardedDate'] = day
+            item['requestId'] = body['requestId']
         if (worker):
-            if any(worker.get(field) != item.get(field) for field in ('name', 'rate', 'type', 'bankName', 'accNo', 'projectId', 'gangId')):
+            if any(worker.get(field) != item.get(field) for field in ('name', 'rate', 'type', 'bankName', 'accNo', 'projectId', 'gangId', 'onboardedDate')):
                 raise ValueError('Worker ID already used for different data')
             return clean(worker)
+        if operation == 'register_allocate':
+            payroll = get_table('PAYROLL_TABLE')
+            cycle_key = {'PK': pk, 'SK': f'PAYROLL#{day[:7]}'}
+            if payroll.get_item(Key=cycle_key, ConsistentRead=True).get('Item'):
+                raise ValueError('Payroll is already generated for this month. Reopen the unpaid cycle before onboarding to this date.')
+            allocation = {'PK': f'ORG#{org}', 'SK': f'ALLOCATION#{wid}#{day}',
+                          'entityType': 'worker-allocation', 'workerId': wid, 'labourId': wid,
+                          'projectId': pid, 'orgId': org, 'date': day, 'version': 1,
+                          'confirmedBy': identity.user_id, 'confirmedAt': now()}
+            storage.transact(table, [
+                {'Put': {'TableName': table.name, 'Item': item, 'ConditionExpression': 'attribute_not_exists(PK)'}},
+                {'Put': {'TableName': table.name, 'Item': allocation, 'ConditionExpression': 'attribute_not_exists(PK)'}},
+                {'ConditionCheck': {'TableName': payroll.name, 'Key': cycle_key, 'ConditionExpression': 'attribute_not_exists(PK)'}},
+                {'Update': {'TableName': table.name, 'Key': {'PK': pk, 'SK': 'MONTH#' + day[:7]},
+                            'UpdateExpression': 'ADD revision :one', 'ExpressionAttributeValues': {':one': 1}}},
+                audit.operation(identity, 'worker.created', after=item),
+                audit.operation(identity, 'worker.allocated', after=allocation),
+            ])
+            return clean(item)
         audit.put(table, identity, item, ConditionExpression="attribute_not_exists(PK)")
         return clean(item)
     if not worker or worker.get("orgId") != org:

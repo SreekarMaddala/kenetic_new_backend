@@ -58,6 +58,7 @@ SCHEMAS['project']['supervisorsTimeline'] = {
 SCHEMAS['vendor']['materialIds'] = {'type': 'array', 'entity': 'inventory-item', 'maxItems': 80}
 SCHEMAS['labour-attendance']['gangId'] = {'type': 'string', 'entity': 'worker-gang'}
 SCHEMAS['labour-attendance']['operation']['enum'].append('gang_create')
+SCHEMAS['labour-attendance']['operation']['enum'].append('register_allocate')
 # Geographic coordinates have their own bounds.
 SCHEMAS['attendance']['location']['properties']['latitude'].update(minimum=-90, maximum=90)
 SCHEMAS['attendance']['location']['properties']['longitude'].update(minimum=-180, maximum=180)
@@ -177,7 +178,7 @@ def validate(resource, path, method, body, existing=None):
         if 'amount' in body and Decimal(body['amount']) != Decimal(body['amount']).quantize(Decimal('0.01')):
             raise ValueError('Amount must have at most two decimal places')
         operation = body.get('operation', 'attendance' if body.get('workerId') or body.get('labourAttendanceId') else 'register')
-        necessary = {'gang_create': ['name'], 'register': ['name', 'rate'], 'allocate': ['date'], 'attendance': ['date', 'status'], 'debit': ['date', 'amount', 'description', 'requestId'], 'advance': ['date', 'amount', 'description', 'requestId'], 'advance_clear': ['date', 'advanceId', 'amount', 'expectedVersion', 'requestId'], 'advance_delete': ['date', 'advanceId', 'expectedVersion', 'requestId']}.get(operation)
+        necessary = {'gang_create': ['name'], 'register': ['name', 'rate'], 'register_allocate': ['name', 'rate', 'date', 'projectId', 'gangId', 'requestId'], 'allocate': ['date'], 'attendance': ['date', 'status'], 'debit': ['date', 'amount', 'description', 'requestId'], 'advance': ['date', 'amount', 'description', 'requestId'], 'advance_clear': ['date', 'advanceId', 'amount', 'expectedVersion', 'requestId'], 'advance_delete': ['date', 'advanceId', 'expectedVersion', 'requestId']}.get(operation)
         if necessary is None:
             raise ValueError('Invalid workforce operation')
         for key in necessary:

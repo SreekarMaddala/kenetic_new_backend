@@ -42,6 +42,15 @@ daily payments, final wages and each group's payment status/reference. The
 logistics page exports dated transport, mileage and fuel records for its
 selected period.
 
+The project attendance page also provides gang allocation, attendance and daily
+wage payment actions. A gang action applies to all members in its complete
+project/date view using their individual rates; it uses the existing per-worker
+API and retains payroll locks, version checks and paid-wage correction reasons.
+Administrators allocate gangs; supervisors record attendance and mark daily
+wages paid. The UI lists any member failures and refreshes the saved results.
+Daily gang actions commit per member, so they can partially succeed; retrying a
+payment skips members already paid. Monthly payroll settlement remains atomic.
+
 Existing payroll snapshots keep their original figures. Reopen and regenerate
 unpaid registers to include automatic advance recovery. Before relying on
 spending summaries after upgrading a populated environment, preview and apply
