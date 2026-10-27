@@ -278,7 +278,19 @@ def labour(identity, method, body, query, pk, org, pid):
                 raise ValueError('Request ID already used for a different advance')
             return clean(prior)
         # Advances remain separate cash records; payroll snapshots recover them.
-        storage.transact(table, advance_lock(table, pk, day[:7]) + [
+        payroll = get_table('PAYROLL_TABLE')
+        cycle_key = {'PK': pk, 'SK': 'PAYROLL#' + day[:7]}
+        cycle = payroll.get_item(Key=cycle_key, ConsistentRead=True).get('Item')
+        cycle_check = {'TableName': payroll.name, 'Key': cycle_key,
+                       'ConditionExpression': 'attribute_not_exists(PK)'}
+        if cycle:
+            item['excludedPayrollCycleId'] = cycle['cycleId']
+            cycle_check.update(ConditionExpression='cycleId = :cycle',
+                               ExpressionAttributeValues={':cycle': cycle['cycleId']})
+        storage.transact(table, [
+            {'ConditionCheck': cycle_check},
+            {'Update': {'TableName': table.name, 'Key': {'PK': pk, 'SK': 'MONTH#' + day[:7]},
+                        'UpdateExpression': 'ADD revision :one', 'ExpressionAttributeValues': {':one': 1}}},
             {'Put': {'TableName': table.name, 'Item': item, 'ConditionExpression': 'attribute_not_exists(PK)'}},
             {'Update': {'TableName': table.name, 'Key': {'PK': pk, 'SK': f'WORKER-ADVANCE-MONTH#{wid}#{day[:7]}'},
                         'UpdateExpression': 'ADD amount :amount', 'ExpressionAttributeValues': {':amount': amount}}},

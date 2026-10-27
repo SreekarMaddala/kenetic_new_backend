@@ -77,13 +77,38 @@ def test_recorded_advance_reduces_final_pay_and_locks_with_payroll(app_database)
     assert profile['summary']['deductions'] == 200 and profile['summary']['outstanding'] == 600
     cycle = data(call(api.governance_handler, '/projects/' + pid + '/payroll', 'POST', {'month': '2026-10'}))
     assert cycle['staff'][0]['net'] == 600
-    assert call(api.workforce_handler, PATH, 'POST', {**advance, 'amount': 500, 'requestId': 'record-only-after-payroll'})['statusCode'] == 400
+    data(call(api.workforce_handler, PATH, 'POST', {**advance, 'amount': 500, 'requestId': 'record-only-after-payroll'}))
     after = data(call(api.workforce_handler, PATH + '/' + wid, query=query))
-    assert after['recordedAdvances'] == 200 and len(after['advances']) == 1
+    assert after['recordedAdvances'] == 700 and len(after['advances']) == 2
     assert after['summary']['deductions'] == 200 and after['summary']['outstanding'] == 600
     assert data(call(api.workforce_handler, PATH + '/' + wid, query={**query, 'month': '2026-11'}))['recordedAdvances'] == 0
     other = data(call(api.projects_handler, '/projects', 'POST', {'name': 'Other site', 'budget': 10000}))['projectId']
     assert data(call(api.workforce_handler, PATH + '/' + wid, query={**query, 'projectId': other}))['recordedAdvances'] == 0
+
+
+def test_unlimited_advances_after_payroll_generation_and_payment(app_database):
+    call, pid, wid = registered(app_database)
+    body = {'workerId': wid, 'projectId': pid, 'date': '2026-10-04'}
+    data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'allocate'}))
+    data(record_attendance(app_database, {**body, 'operation': 'attendance', 'status': 'Present'}))
+    advance = {**body, 'operation': 'advance', 'amount': 200, 'description': 'Cash', 'requestId': 'before-payroll-advance'}
+    data(call(api.workforce_handler, PATH, 'POST', advance))
+    endpoint = '/projects/' + pid + '/payroll'
+    cycle = data(call(api.governance_handler, endpoint, 'POST', {'month': '2026-10'}))
+    # Backdating must not hide a new advance when the older snapshot is paid.
+    large = {**advance, 'amount': 10**13, 'date': '2026-10-01', 'requestId': 'after-payroll-large-advance'}
+    saved = data(call(api.workforce_handler, PATH, 'POST', large))
+    assert data(call(api.workforce_handler, PATH, 'POST', large))['advanceId'] == saved['advanceId']
+    data(call(api.governance_handler, endpoint + '/disburse', 'POST', {
+        'month': '2026-10', 'reference': 'payroll-payment', 'expectedCreatedAt': cycle['createdAt']}))
+    after_payment = {**advance, 'amount': 1000, 'requestId': 'after-paid-advance'}
+    second = data(call(api.workforce_handler, PATH, 'POST', after_payment))
+    profile = data(call(api.workforce_handler, PATH + '/' + wid, query={'projectId': pid, 'month': '2026-10'}))
+    assert profile['recordedAdvances'] == 10**13 + 1000
+    assert {entry['advanceId'] for entry in profile['advances']} == {saved['advanceId'], second['advanceId']}
+    assert profile['summary']['payrollPaid'] == 600
+    assert profile['summary']['outstanding'] == 0
+    assert not profile['advancesHasMore']
 
 
 def test_partial_clear_full_clear_and_delete_before_payroll(app_database):

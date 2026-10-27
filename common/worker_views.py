@@ -76,9 +76,12 @@ def profile(identity, table, org, pid, worker_id, query):
     if entry and payroll_settlement.member_paid(cycle, entry):
         payroll_paid = entry.get('net', 0)
         if cycle.get('advanceRecoveryVersion'):
-            result['recordedAdvances'] = 0
-            result['advances'] = []
-            result['advancesHasMore'] = False
+            # New advances are excluded from this immutable payroll snapshot.
+            excluded = {row['advanceId'] for row in advances.get('Items', [])
+                        if row.get('excludedPayrollCycleId') == cycle['cycleId']}
+            result['recordedAdvances'] = max(0, result['recordedAdvances'] - recovery)
+            result['advances'] = [row for row in result['advances'] if row['advanceId'] in excluded]
+            result['advancesHasMore'] = result['recordedAdvances'] > sum(row['remainingAmount'] for row in result['advances'])
     result['summary'] = {'daysPresent': sum({'Present': 1, 'Half Day': Decimal('0.5')}.get(row['status'], 0) for row in rows),
                          'grossWages': gross, 'dailyPaid': daily_paid, 'payrollPaid': payroll_paid, 'deductions': deductions,
                          'advanceRecovery': recovery,

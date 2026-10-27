@@ -104,16 +104,16 @@ def test_advance_corrections_require_reopening_unpaid_payroll(app_database):
     cycle = data(call(api.governance_handler, endpoint, 'POST', {'month': MONTH}))
     body = {'workerId': saved['workerId'], 'projectId': pid, 'date': '2026-10-04',
             'operation': 'advance', 'amount': 100, 'description': 'Cash', 'requestId': 'advance-after-snapshot'}
-    assert call(api.workforce_handler, PATH, 'POST', body)['statusCode'] == 400
+    data(call(api.workforce_handler, PATH, 'POST', body))
     profile = data(call(api.workforce_handler, PATH + '/' + saved['workerId'], query={'projectId': pid, 'month': MONTH}))
-    entry = profile['advances'][0]
+    entry = next(entry for entry in profile['advances'] if entry['amount'] == 200)
     deletion = {key: body[key] for key in ('workerId', 'projectId', 'date')}
     deletion.update(operation='advance_delete', advanceId=entry['advanceId'], expectedVersion=entry['version'], requestId='delete-locked-advance')
     assert call(api.workforce_handler, PATH, 'POST', deletion)['statusCode'] == 400
     data(call(api.governance_handler, endpoint + '/' + MONTH, 'DELETE'))
     data(call(api.workforce_handler, PATH, 'POST', deletion))
     regenerated = data(call(api.governance_handler, endpoint, 'POST', {'month': MONTH}))
-    assert regenerated['amount'] == 800 and regenerated['cycleId'] != cycle['cycleId']
+    assert regenerated['amount'] == 700 and regenerated['cycleId'] != cycle['cycleId']
     assert call(api.governance_handler, endpoint + '/disburse', 'POST', {
         'month': MONTH, 'reference': 'stale', 'expectedCreatedAt': cycle['createdAt']})['statusCode'] == 400
 

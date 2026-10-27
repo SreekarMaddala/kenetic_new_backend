@@ -57,6 +57,7 @@ SCHEMAS['project']['supervisorsTimeline'] = {
 }
 SCHEMAS['vendor']['materialIds'] = {'type': 'array', 'entity': 'inventory-item', 'maxItems': 80}
 SCHEMAS['labour-attendance']['gangId'] = {'type': 'string', 'entity': 'worker-gang'}
+SCHEMAS['labour-attendance']['amount'].pop('maximum')
 SCHEMAS['labour-attendance']['operation']['enum'].append('gang_create')
 SCHEMAS['labour-attendance']['operation']['enum'].append('register_allocate')
 # Geographic coordinates have their own bounds.
@@ -87,7 +88,7 @@ def check_value(key, value, spec):
             raise ValueError(f'{key} must be a finite number')
         if kind == 'integer' and value != int(value):
             raise ValueError(f'{key} must be an integer')
-        if value < spec.get('minimum', 0) or value > spec.get('maximum', 10**12):
+        if value < spec.get('minimum', 0) or ('maximum' in spec and value > spec['maximum']):
             raise ValueError(f'{key} is outside its permitted range')
     elif kind == 'string':
         if not isinstance(value, str) or len(value) > spec.get('maxLength', 4000):

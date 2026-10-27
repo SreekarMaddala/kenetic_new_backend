@@ -757,7 +757,6 @@
         "type": "string"
       },
       "amount": {
-        "maximum": 1000000000000,
         "minimum": 0,
         "type": "number"
       },
@@ -807,7 +806,8 @@
           "advance",
           "advance_clear",
           "advance_delete",
-          "gang_create"
+          "gang_create",
+          "register_allocate"
         ],
         "type": "string"
       },
