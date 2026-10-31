@@ -1,6 +1,6 @@
 """Salary configuration, immutable payroll generation and settlement."""
 from common.authz import AuthorizationError, OPERATIONS_ADMIN, SUPER_ADMIN, require_role
-from common import audit, model, payroll_records, payroll_settlement, storage, worker_views
+from common import audit, gang_workforce, model, payroll_records, payroll_settlement, storage, worker_views
 from datetime import date
 from common.dynamo import get_table
 import uuid
@@ -39,7 +39,8 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
             {"Put": {"TableName": table.name, "Item": archived}},
             {"Delete": {"TableName": table.name, "Key": key, "ConditionExpression": "#s = :pending AND createdAt = :created", "ExpressionAttributeNames": {"#s": "status"}, "ExpressionAttributeValues": {":pending": "Pending", ":created": old["createdAt"]}}},
             audit.operation(identity, "payroll.reopened", old, archived),
-        ])
+        ] + gang_workforce.payroll_account_operations(get_table('WORKFORCE_TABLE'), identity, old,
+                                                     payroll_records.expand(table, old)['staff'], False))
         return {"reopened": True}
     if path.endswith("/staff"):
         if method == "GET":
@@ -119,6 +120,8 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
                       "nightShifts": w["nightShifts"], "gross": gross, "deductions": deductions,
                       "advanceRecovery": advances, "otherDeductions": w['advanceDeductions'],
                       "dailyPaid": w["dailyPaid"], "net": gross - deductions - w["dailyPaid"]})
+    gang_entries, gang_operations = gang_workforce.payroll_entries(workforce, org, pk, month)
+    staff.extend(gang_entries)
     profiles = rows(table, pk, "SALARY#")
     employees = _batch_get(get_table("USERS_TABLE"), [
         {"PK": f"ORG#{org}", "SK": f"USER#{profile['employeeId']}"} for profile in profiles
@@ -151,5 +154,6 @@ def payroll(identity, method, path, body, pk, pid, org, query=None):
     ]
     if build:
         operations.append(payroll_records.publish_operation(table, build))
+    operations.extend(gang_operations)
     storage.transact(table, operations)
     return clean(payroll_records.expand(table, item))

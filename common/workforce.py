@@ -25,6 +25,11 @@ def labour_list(table, pk, day, roster=False, selected_workers=None):
     date.fromisoformat(day)
     org, pid = pk.removeprefix("ORG#").split("#PROJECT#", 1)
     if (selected_workers is not None):
+        from common import gang_workforce
+        gang_ids = {worker['gangId'] for worker in selected_workers if worker.get('gangId')}
+        gangs = worker_views.batch_rows(table, [{'PK': f'ORG#{org}', 'SK': 'GANG#' + gid} for gid in gang_ids])
+        selected_workers = [worker for worker in selected_workers if not gang_workforce.active_on(
+            gangs.get((f'ORG#{org}', 'GANG#' + str(worker.get('gangId'))), {}), day)]
         result = []
         keys = [key for worker in selected_workers for key in ({'PK': pk, 'SK': model.daily_key(worker['workerId'], day)}, {'PK': pk, 'SK': f"WORKER-MONTH#{day[:7]}#{worker['workerId']}"})]
         snapshots = worker_views.batch_rows(table, keys)
@@ -94,6 +99,9 @@ def labour(identity, method, body, query, pk, org, pid):
     table = get_table(("WORKFORCE_TABLE"))
     day = str(body.get("date") or query.get("date") or now()[:10])
     date.fromisoformat(day)
+    if method == 'POST' and body.get('operation') in {'gang_configure', 'gang_allocate', 'gang_attendance', 'gang_advance', 'gang_advance_return'}:
+        from common import gang_workforce
+        return gang_workforce.handle(identity, body, pk, org, pid, day)
     if not pid:
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
         if method == "GET":
@@ -130,9 +138,14 @@ def labour(identity, method, body, query, pk, org, pid):
         gang_key = {'PK': f'ORG#{org}', 'SK': 'GANG#' + gang_id}
         existing = table.get_item(Key=gang_key, ConsistentRead=True).get('Item')
         if existing:
+            if body.get('attendanceMode') == 'headcount' and any(existing.get(field) != body.get(field) for field in ('attendanceMode', 'size', 'rate', 'headcountFrom')):
+                raise ValueError('A gang with this name already exists. Open it to edit its team size and rate.')
             return clean(existing)
         gang = {**gang_key, 'gangId': gang_id, 'name': name, 'entityType': 'worker-gang',
                 'orgId': org, 'status': 'Active', 'createdAt': now(), 'createdBy': identity.user_id}
+        if body.get('attendanceMode') == 'headcount':
+            from common import gang_workforce
+            gang.update(gang_workforce.settings(body, day))
         audit.put(table, identity, gang, ConditionExpression='attribute_not_exists(PK)')
         return clean(gang)
     if operation == "attendance":
@@ -184,6 +197,12 @@ def labour(identity, method, body, query, pk, org, pid):
         return clean(item)
     if not worker or worker.get("orgId") != org:
         raise ValueError("Worker does not exist in this organization")
+    gang = None
+    if worker.get('gangId'):
+        from common import gang_workforce
+        gang = table.get_item(Key={'PK': f'ORG#{org}', 'SK': 'GANG#' + worker['gangId']}, ConsistentRead=True).get('Item')
+        if gang and gang_workforce.active_on(gang, day):
+            raise ValueError('This gang uses headcounts. Record attendance and advances on the gang card.')
     allocation_key = {"PK": f"ORG#{org}", "SK": f"ALLOCATION#{wid}#{day}"}
     if operation == "allocate":
         require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
@@ -345,6 +364,8 @@ def labour(identity, method, body, query, pk, org, pid):
             "nightShift": night_shift, "orgId": org, "projectId": pid, "updatedAt": now(),
             "createdAt": existing.get("createdAt", now()), "createdBy": existing.get("createdBy", identity.user_id),
             "updatedBy": identity.user_id, "version": version + 1}
+    if gang:
+        item.update(gangId=gang['gangId'], gangName=gang['name'])
     if existing and all(existing.get(field, False if field == "nightShift" else None) == item[field]
                         for field in ("status", "paymentStatus", "wage", "nightShift")):
         return clean(existing)

@@ -455,6 +455,14 @@ def _domain_handler(domain, event, context):
             return _response(200, {'success': True, 'data': _clean(reverse_request(table, identity, pk, org_id, record_id, data))})
         if (method == 'GET' and resource == 'labour-attendance'):
             from common import worker_views
+            if query.get('gangRoster') == 'true':
+                from common import gang_workforce
+                day = str(query.get('date') or workflow_helpers.now()[:10])
+                if query.get('gangId'):
+                    model.validate_id('worker-gang', query['gangId'])
+                result = gang_workforce.roster(identity, table, org_id, project_id, day,
+                                                query.get('gangId'), query.get('roster') == 'true')
+                return _response(200, {'success': True, 'data': result})
             if query.get('gangs') == 'true':
                 require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
                 if project_id or record_id:

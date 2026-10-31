@@ -64,6 +64,8 @@ SCHEMAS['labour-attendance']['gangId'] = {'type': 'string', 'entity': 'worker-ga
 SCHEMAS['labour-attendance']['amount'].pop('maximum')
 SCHEMAS['labour-attendance']['operation']['enum'].append('gang_create')
 SCHEMAS['labour-attendance']['operation']['enum'].append('register_allocate')
+SCHEMAS['labour-attendance']['operation']['enum'].extend(['gang_configure', 'gang_allocate', 'gang_attendance', 'gang_advance', 'gang_advance_return'])
+SCHEMAS['labour-attendance'].update(fields(numbers='size present halfDay nightCount', dates='headcountFrom', enums={'attendanceMode': ['headcount']}))
 # Geographic coordinates have their own bounds.
 SCHEMAS['attendance']['location']['properties']['latitude'].update(minimum=-90, maximum=90)
 SCHEMAS['attendance']['location']['properties']['longitude'].update(minimum=-180, maximum=180)
@@ -195,6 +197,14 @@ def validate(resource, path, method, body, existing=None):
             raise ValueError('Amount must have at most two decimal places')
         operation = body.get('operation', 'attendance' if body.get('workerId') or body.get('labourAttendanceId') else 'register')
         necessary = {'gang_create': ['name'], 'register': ['name', 'rate'], 'register_allocate': ['name', 'rate', 'date', 'projectId', 'gangId', 'requestId'], 'allocate': ['date'], 'attendance': ['date', 'status'], 'debit': ['date', 'amount', 'description', 'requestId'], 'advance': ['date', 'amount', 'description', 'requestId'], 'advance_clear': ['date', 'advanceId', 'amount', 'expectedVersion', 'requestId'], 'advance_delete': ['date', 'advanceId', 'expectedVersion', 'requestId']}.get(operation)
+        gang_fields = {
+            'gang_configure': ['gangId', 'size', 'rate', 'headcountFrom', 'expectedVersion'],
+            'gang_allocate': ['gangId', 'projectId', 'date', 'expectedVersion'],
+            'gang_attendance': ['gangId', 'projectId', 'date', 'present', 'expectedVersion'],
+            'gang_advance': ['gangId', 'projectId', 'date', 'amount', 'description', 'requestId'],
+            'gang_advance_return': ['gangId', 'projectId', 'date', 'amount', 'description', 'requestId'],
+        }
+        necessary = gang_fields.get(operation, necessary)
         if necessary is None:
             raise ValueError('Invalid workforce operation')
         for key in necessary:

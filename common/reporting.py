@@ -44,7 +44,7 @@ def project_totals(projects, org, period=None):
 def spending_ledger(identity, org, pid):
     require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
     result = []
-    labels = {"expense": "Direct Expense", "payment": "Vendor Payment", "payroll": "Payroll Settlement", "payroll-settlement": "Payroll Settlement", "daily-wage": "Daily Wage Payment", "worker-advance": "Worker Advance"}
+    labels = {"expense": "Direct Expense", "payment": "Vendor Payment", "payroll": "Payroll Settlement", "payroll-settlement": "Payroll Settlement", "daily-wage": "Daily Wage Payment", "worker-advance": "Worker Advance", "gang-cash": "Gang Advance"}
     sources = ([item for env in ('FINANCE_TABLE', 'WORKFORCE_TABLE', 'PAYROLL_TABLE') for item in rows(get_table(env), f'ORG#{org}#PROJECT#{pid}', '') if storage.contribution(item)])
     for item in sources:
         if item.get("projectId") != pid:
@@ -54,7 +54,7 @@ def spending_ledger(identity, org, pid):
         result.append({"id": item["SK"], "source": label, "date": str(item.get("date") or item.get("paidAt") or item.get("approvedAt") or item.get("createdAt") or "")[:10],
                        "amount": storage.contribution(item),
                        "description": item.get("description") or item.get('contractorName') or item.get("vendorName") or item.get("month") or item.get("labourId") or label,
-                       "status": "Paid" if kind in {"payroll", "payroll-settlement", "daily-wage", "worker-advance"} else "Approved", "projectId": pid})
+                       "status": "Returned" if kind == 'gang-cash' and item['operation'] == 'gang_advance_return' else "Paid" if kind in {"payroll", "payroll-settlement", "daily-wage", "worker-advance", "gang-cash"} else "Approved", "projectId": pid})
     project = get_table("PROJECTS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"PROJECT#{pid}"}, ConsistentRead=True)["Item"]
     opening = project.get("openingSpent", project.get("spent", 0))
     if opening:

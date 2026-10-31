@@ -1,5 +1,6 @@
 """Group settlement receipts against an immutable monthly payroll register."""
-from common import audit, payroll_records, storage
+from common import audit, gang_workforce, payroll_records, storage
+from common.dynamo import get_table
 from common.workflow_helpers import clean, now
 
 
@@ -65,5 +66,5 @@ def settle(table, identity, cycle, body):
         {'Put': {'TableName': table.name, 'Item': receipt, 'ConditionExpression': 'attribute_not_exists(PK)'}},
         audit.operation(identity, 'payroll.settled', before=cycle, after=updated),
         audit.operation(identity, 'payroll.group-payment-recorded', after=receipt),
-    ])
+    ] + gang_workforce.payroll_account_operations(get_table('WORKFORCE_TABLE'), identity, updated, members, True))
     return clean(payroll_records.expand(table, updated))

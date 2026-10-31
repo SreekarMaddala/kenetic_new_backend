@@ -785,6 +785,12 @@
         "minimum": 0,
         "type": "number"
       },
+      "attendanceMode": {
+        "enum": [
+          "headcount"
+        ],
+        "type": "string"
+      },
       "bankName": {
         "maxLength": 4000,
         "type": "string"
@@ -810,6 +816,15 @@
         "pattern": "^gng_[0-9a-f]{32}$",
         "type": "string"
       },
+      "halfDay": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "headcountFrom": {
+        "format": "date",
+        "type": "string"
+      },
       "labourAttendanceId": {
         "entity": "worker",
         "pattern": "^wor_[0-9a-f]{32}$",
@@ -818,6 +833,11 @@
       "name": {
         "maxLength": 4000,
         "type": "string"
+      },
+      "nightCount": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
       },
       "nightShift": {
         "type": "boolean"
@@ -832,7 +852,12 @@
           "advance_clear",
           "advance_delete",
           "gang_create",
-          "register_allocate"
+          "register_allocate",
+          "gang_configure",
+          "gang_allocate",
+          "gang_attendance",
+          "gang_advance",
+          "gang_advance_return"
         ],
         "type": "string"
       },
@@ -848,6 +873,11 @@
         ],
         "type": "string"
       },
+      "present": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
+      },
       "projectId": {
         "entity": "project",
         "pattern": "^pro_[0-9a-f]{32}$",
@@ -861,6 +891,11 @@
       "requestId": {
         "pattern": "[A-Za-z0-9_-]{8,80}",
         "type": "string"
+      },
+      "size": {
+        "maximum": 1000000000000,
+        "minimum": 0,
+        "type": "number"
       },
       "status": {
         "enum": [

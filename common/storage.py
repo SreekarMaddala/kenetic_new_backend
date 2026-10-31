@@ -17,6 +17,8 @@ def contribution(record):
         return Decimal(record.get('wage', 0))
     if kind == 'worker-advance' and status != 'deleted':
         return Decimal(record.get('remainingAmount', record.get('amount', 0)))
+    if kind == 'gang-cash':
+        return Decimal(record['amount']) * (-1 if record['operation'] == 'gang_advance_return' else 1)
     if kind == 'payroll-settlement' and status == 'paid':
         return Decimal(record.get('amount', 0))
     if kind == 'payroll' and record.get('settlementVersion'):
