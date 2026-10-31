@@ -11,6 +11,8 @@ from common.documents import files
 
 
 def handle(identity, domain, resource, method, path, body, query, pk, pid, org, rid):
+    if resource == 'logistics-trip' and method == 'POST' and body.get('tripType') != 'vehicle_registration' and not pid:
+        raise ValueError('Record mileage, fuel, and transport entries inside a project')
     if resource == 'material' and '/indents' in path and method == 'POST' and body.get('catalogItemId'):
         item = catalog_material(org, body['catalogItemId'])
         if item.get('status') == 'Inactive' or body.get('materialName') != item['name'] or body.get('unit') != item['unit'] or body.get('category') != item.get('category', 'General'):

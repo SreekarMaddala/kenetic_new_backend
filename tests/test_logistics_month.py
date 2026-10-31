@@ -54,3 +54,12 @@ def test_vehicle_registration_preserves_model_and_plate_in_supported_fields(data
     assert any(row['tripId'] == saved['tripId'] and row['registrationNumber'] == body['registrationNumber'] for row in fleet)
     project_fleet = data(api.field_operations_handler(event(PATH, query={'projectId': PROJECT_A}, **SITE), None))
     assert any(row['tripId'] == saved['tripId'] and row['vehicle'] == body['vehicle'] for row in project_fleet)
+
+
+@pytest.mark.parametrize('kind,fields', [('vehicle', {'startKm': 0, 'endKm': 10}), ('fuel', {'liters': 5, 'rate': 90}), ('rental', {'rate': 100, 'helper': 20})])
+def test_operating_entries_require_a_project_even_for_admins(database, kind, fields):
+    body = {'tripType': kind, 'date': '2026-09-13', 'vehicle': 'Truck', 'vendor': 'Vendor', 'material': 'Sand', **fields}
+    response = api.field_operations_handler(event(PATH, 'POST', body), None)
+    assert response['statusCode'] == 400
+    assert 'inside a project' in __import__('json').loads(response['body'])['error']['message']
+    assert api.field_operations_handler(event(PATH, 'POST', {**body, 'projectId': PROJECT_A}), None)['statusCode'] == 201
