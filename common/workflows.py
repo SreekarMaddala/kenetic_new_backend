@@ -1,5 +1,6 @@
 """Dispatch validated requests to focused business modules."""
 from common.dynamo import get_table
+from common.authz import SUPERVISOR, require_role
 from common import model
 from common.workflow_helpers import HttpError, clean, rows
 from common.workflow_validation import validate_subcontractor
@@ -11,6 +12,11 @@ from common.documents import files
 
 
 def handle(identity, domain, resource, method, path, body, query, pk, pid, org, rid):
+    if resource == 'expense' and method in {'POST', 'PUT', 'PATCH'} and body.get('paidById'):
+        payer = get_table('USERS_TABLE').get_item(Key={'PK': f'ORG#{org}', 'SK': 'USER#' + body['paidById']}, ConsistentRead=True).get('Item')
+        if not payer or payer.get('orgId') != org or payer.get('status') != 'Active':
+            raise ValueError('Select an active payment maker from this organization')
+        body['submittedBy'] = payer.get('name') or payer.get('email') or body['paidById']
     if resource == 'logistics-trip' and method == 'POST' and body.get('tripType') != 'vehicle_registration' and not pid:
         raise ValueError('Record mileage, fuel, and transport entries inside a project')
     if resource == 'material' and '/indents' in path and method == 'POST' and body.get('catalogItemId'):
@@ -23,6 +29,9 @@ def handle(identity, domain, resource, method, path, body, query, pk, pid, org, 
         if method == "DELETE":
             raise ValueError("Deactivate subcontractors to preserve project history")
         if method == "POST":
+            if body.get('type') == 'Procurement':
+                require_role(identity, SUPERVISOR)
+                body.setdefault('status', 'Pending')
             validate_subcontractor(body, org, pk, pid)
     if resource in {"inventory-item", "vendor"}:
         result = catalog(identity, resource, method, body, query, pk, org, pid, rid)

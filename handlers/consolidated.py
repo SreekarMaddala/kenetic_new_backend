@@ -22,7 +22,7 @@ from common import audit, contracts, finance, inventory, model, pagination, repo
 DOMAIN_CONFIG = {
     "platform-admin": ("ORGANIZATIONS_TABLE", (SUPER_ADMIN, OPERATIONS_ADMIN)),
     "projects": ("PROJECTS_TABLE", (SUPERVISOR, OPERATIONS_ADMIN, SUPER_ADMIN)),
-    "project-commercial": ("PROJECTS_TABLE", (OPERATIONS_ADMIN, SUPER_ADMIN)),
+    "project-commercial": ("PROJECTS_TABLE", (SUPERVISOR, OPERATIONS_ADMIN, SUPER_ADMIN)),
     "workforce": ("FIELD_OPERATIONS_TABLE", (SUPERVISOR, OPERATIONS_ADMIN, SUPER_ADMIN)),
     "field-operations": ("FIELD_OPERATIONS_TABLE", (SUPERVISOR, OPERATIONS_ADMIN, SUPER_ADMIN)),
     "site-control": ("SITE_CONTROL_TABLE", (SUPERVISOR, OPERATIONS_ADMIN, SUPER_ADMIN)),
@@ -421,6 +421,11 @@ def _domain_handler(domain, event, context):
             require_role(identity, *DOMAIN_CONFIG[domain][1])
         if not _check_route(domain, path, method):
             return _error(404, "NOT_FOUND", "Unknown operation")
+        if domain == 'project-commercial' and SUPERVISOR in identity.roles:
+            if not re.fullmatch(r'/projects/[^/]+/subcontractors(?:/[^/]+)?', path) or method not in {'GET', 'POST'}:
+                raise AuthorizationError('Supervisors can only view project subcontractors and submit procurement requests')
+            if method == 'POST' and (data.get('type') != 'Procurement' or _item_id(path, 'subcontractor')):
+                raise AuthorizationError('Supervisors can only submit procurement requests')
         if path.startswith("/super-admin/"):
             require_role(identity, SUPER_ADMIN)
         if domain == "projects" and method != "GET":
@@ -437,6 +442,17 @@ def _domain_handler(domain, event, context):
         pk, project_id = _pk(identity, path, resource, data, query)
         org_id = query.get("orgId") or data.get("orgId") or identity.organization_id
         record_id = _item_id(path, resource)
+        if path == '/subcontractors/analytics' and method == 'GET':
+            require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
+            if project_id:
+                raise ValueError('Open subcontractor analytics outside a project')
+            from common.subcontractor_analytics import report
+            return _response(200, {'success': True, 'data': report(org_id)})
+        if resource == 'subcontractor' and path.endswith('/reverse') and project_id:
+            if method != 'POST':
+                return _error(405, 'METHOD_NOT_ALLOWED', 'Use POST to reverse a procurement request')
+            from common.procurement import reverse_request
+            return _response(200, {'success': True, 'data': _clean(reverse_request(table, identity, pk, org_id, record_id, data))})
         if (method == 'GET' and resource == 'labour-attendance'):
             from common import worker_views
             if query.get('gangs') == 'true':

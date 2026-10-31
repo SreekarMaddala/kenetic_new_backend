@@ -57,6 +57,9 @@ SCHEMAS['project']['supervisorsTimeline'] = {
 }
 SCHEMAS['vendor']['materialIds'] = {'type': 'array', 'entity': 'inventory-item', 'maxItems': 80}
 SCHEMAS['payment']['materialName'] = {'type': 'string', 'maxLength': 4000}
+SCHEMAS['payment']['paymentType'] = {'type': 'string', 'enum': ['Advance', 'Payment']}
+SCHEMAS['expense'].update(fields('paidTo reference', ids={'paidById': 'user'}, enums={'paymentMode': ['Cash', 'UPI', 'NEFT', 'RTGS', 'Cheque', 'Card', 'Other']}))
+SCHEMAS['subcontractor']['status']['enum'].append('Reversed')
 SCHEMAS['labour-attendance']['gangId'] = {'type': 'string', 'entity': 'worker-gang'}
 SCHEMAS['labour-attendance']['amount'].pop('maximum')
 SCHEMAS['labour-attendance']['operation']['enum'].append('gang_create')
@@ -141,6 +144,8 @@ def request_schema(resource, path, method):
     if path.endswith('/extract') or path.endswith('/invitation'):
         return {}, []
     if path.endswith('/reverse'):
+        if resource == 'subcontractor':
+            return {**fields('reason'), **{k: COMMON[k] for k in ('requestId', 'expectedVersion')}}, ['reason', 'requestId', 'expectedVersion']
         return {**fields('reason reference'), **{k: COMMON[k] for k in ('requestId', 'expectedVersion')}}, ['reason', 'reference', 'requestId', 'expectedVersion']
     if resource == 'labour-attendance':
         required = ['name', 'rate'] if not (path and method == 'POST') else []
@@ -163,6 +168,13 @@ def validate(resource, path, method, body, existing=None):
     for key, value in body.items():
         check_value(key, value, props[key])
     state = {**(existing or {}), **body}
+    if resource == 'expense' and state.get('paymentMode'):
+        if not str(state.get('paidTo', '')).strip() or not (state.get('paidById') or str(state.get('submittedBy', '')).strip()):
+            raise ValueError('Select who paid and enter who received the payment')
+        if state['paymentMode'] != 'Cash' and not str(state.get('reference', '')).strip():
+            raise ValueError('Enter a transaction or receipt reference for non-cash expenses')
+    if resource == 'payment' and state.get('paymentType') and not state.get('contractorId'):
+        raise ValueError('Advance and work-payment categories are for subcontractor payments')
     if existing and resource != 'user':
         required = [key for key in REQUIRED.get(resource, []) if key != 'requestId']
     for key in required:

@@ -1,4 +1,4 @@
-from test_security_workflows import ADMIN_B, ORG_B, PROJECT_A
+from test_security_workflows import ADMIN_B, ORG_B, PROJECT_A, SITE_A
 from test_security_workflows import database, event, data
 from handlers import consolidated as api
 
@@ -21,13 +21,13 @@ def test_registry_and_project_assignment_are_separate(database):
     assert "projectId" not in data(call("/subcontractors"))[0]
     assert len(data(call(endpoint))) == 1
     assert call(endpoint, "POST", body)["statusCode"] == 409
-    request = data(call(endpoint, "POST", {"type": "Procurement", "contractorId": assigned["subcontractorId"], "name": "Cable", "quantity": 2}))
+    request = data(call(endpoint, "POST", {"type": "Procurement", "contractorId": assigned["subcontractorId"], "name": "Cable", "quantity": 2}, sub=SITE_A, role='supervisor'))
     assert request["contractorName"] == "ABC Works"
     request_path = endpoint + "/" + request["subcontractorId"]
     data(call(request_path, "PATCH", {"status": "Approved"}))
     data(call(request_path, "PATCH", {"status": "Approved"}))
     assert call(endpoint, "POST", {"name": "Inline company"})["statusCode"] == 400
-    assert call(endpoint, "POST", {"type": "Procurement", "contractorId": "missing", "quantity": 2})["statusCode"] == 400
+    assert call(endpoint, "POST", {"type": "Procurement", "contractorId": "missing", "quantity": 2}, sub=SITE_A, role='supervisor')["statusCode"] == 400
 
 
 def test_assignment_rejects_foreign_and_inactive_companies(database):
@@ -52,4 +52,4 @@ def test_assignment_dates_links_and_retries(database):
     path = endpoint + "/" + assignment["subcontractorId"]
     assert call(path, "PATCH", {"registryId": "other"})["statusCode"] == 400
     data(call(path, "PATCH", {"status": "Inactive"}))
-    assert call(endpoint, "POST", {"type": "Procurement", "contractorId": assignment["subcontractorId"], "quantity": 1})["statusCode"] == 400
+    assert call(endpoint, "POST", {"type": "Procurement", "contractorId": assignment["subcontractorId"], "quantity": 1}, sub=SITE_A, role='supervisor')["statusCode"] == 400

@@ -26,6 +26,7 @@ def constraints(record, before=None, action='', proposed=None):
         'gangId': ('WORKFORCE_TABLE', f'ORG#{org}', 'GANG', 'worker-gang'),
         'employeeId': ('USERS_TABLE', f'ORG#{org}', 'USER', 'user'),
         'supervisorId': ('USERS_TABLE', f'ORG#{org}', 'USER', 'user'),
+        'paidById': ('USERS_TABLE', f'ORG#{org}', 'USER', 'user'),
         'billId': ('FINANCE_TABLE', f'ORG#{org}#PROJECT#{pid}', 'BILL', 'bill'),
     }
     for field, (table_env, pk, prefix, entity) in refs.items():
@@ -50,7 +51,7 @@ def constraints(record, before=None, action='', proposed=None):
         item = proposed_item or table.get_item(Key=key, ConsistentRead=True).get('Item')
         if not item or item.get('orgId') != org or item.get(status_field) in invalid_states:
             raise ValueError(f'Choose a valid {entity} in this organization')
-        if entity == 'user' and kind in {'project', 'attendance', 'expense'} and item.get('role') != 'supervisor':
+        if entity == 'user' and (kind in {'project', 'attendance'} or (kind == 'expense' and key['SK'] == 'USER#' + str(record.get('supervisorId', '')))) and item.get('role') != 'supervisor':
             raise ValueError('Choose an active supervisor')
         if kind == 'payment' and entity == 'bill':
             if not reversal and item.get('status') != 'Approved':

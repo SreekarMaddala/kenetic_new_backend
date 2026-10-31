@@ -528,9 +528,34 @@
         "pattern": "^org_[0-9a-f]{32}$",
         "type": "string"
       },
+      "paidById": {
+        "entity": "user",
+        "pattern": "^emp_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "paidTo": {
+        "maxLength": 4000,
+        "type": "string"
+      },
+      "paymentMode": {
+        "enum": [
+          "Cash",
+          "UPI",
+          "NEFT",
+          "RTGS",
+          "Cheque",
+          "Card",
+          "Other"
+        ],
+        "type": "string"
+      },
       "projectId": {
         "entity": "project",
         "pattern": "^pro_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "reference": {
+        "maxLength": 4000,
         "type": "string"
       },
       "requestId": {
@@ -1334,6 +1359,13 @@
         "pattern": "^pay_[0-9a-f]{32}$",
         "type": "string"
       },
+      "paymentType": {
+        "enum": [
+          "Advance",
+          "Payment"
+        ],
+        "type": "string"
+      },
       "projectId": {
         "entity": "project",
         "pattern": "^pro_[0-9a-f]{32}$",
@@ -1736,7 +1768,8 @@
           "Draft",
           "Pending",
           "Approved",
-          "Rejected"
+          "Rejected",
+          "Reversed"
         ],
         "type": "string"
       },
