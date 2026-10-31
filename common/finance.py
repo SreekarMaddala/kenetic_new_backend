@@ -5,6 +5,7 @@ from common.dynamo import get_table
 from common.workflow_helpers import now
 from common.workflow_validation import validate_record
 from common.inventory import catalog_material
+import re
 
 
 def approve_linked_payment(table, existing, body, identity):
@@ -79,10 +80,17 @@ def payment_material(body, org, pk):
     vendor = get_table("PARTIES_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"VENDOR#{body.get('vendorId', '')}"}, ConsistentRead=True).get("Item")
     if not vendor or vendor.get("orgId") != org:
         raise ValueError("Choose a vendor in this organization")
-    item = catalog_material(org, body.get("materialId"))
-    if item["itemId"] not in vendor.get("materialIds", []):
-        raise ValueError("Assign this material to the selected vendor first")
-    body.update(vendorName=vendor["name"], material=item["name"], materialUnit=item["unit"])
+    if body.get('materialName'):
+        names = {name.strip().casefold(): name.strip() for name in re.split(r'[,;\n]+', vendor.get('materialsSupplied', '')) if name.strip()}
+        name = names.get(body['materialName'].strip().casefold())
+        if not name:
+            raise ValueError('Choose a material supplied by the selected vendor')
+        body.update(vendorName=vendor['name'], materialName=name, material=name, materialUnit='')
+    else:
+        item = catalog_material(org, body.get("materialId"))
+        if item["itemId"] not in vendor.get("materialIds", []):
+            raise ValueError("Assign this material to the selected vendor first")
+        body.update(vendorName=vendor["name"], material=item["name"], materialUnit=item["unit"])
     if body.get("billId"):
         bill = get_table("FINANCE_TABLE").get_item(Key={"PK": pk, "SK": f"BILL#{body['billId']}"}, ConsistentRead=True).get("Item")
         if not bill or bill.get("status") != "Approved":

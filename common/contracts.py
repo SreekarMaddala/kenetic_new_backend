@@ -27,7 +27,7 @@ SCHEMAS = {
     'attendance': {'location': {'type': 'object', 'properties': fields(numbers='latitude longitude accuracy'), 'required': ['latitude', 'longitude', 'accuracy']}},
     'labour-attendance': fields('name type bankName accNo description correctionReason', 'rate amount', 'date', ids={'workerId': 'worker', 'labourAttendanceId': 'worker', 'targetProjectId': 'project', 'advanceId': 'record'}, enums={'operation': ['register', 'allocate', 'attendance', 'debit', 'advance', 'advance_clear', 'advance_delete'], 'status': ['Present', 'Half Day', 'Absent'], 'paymentStatus': ['Paid', 'Not paid']}, booleans='nightShift'),
     'dpr': fields('summary weather', 'labourCount', 'date', enums={'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
-    'material': fields('materialName name unit priority description remarks', 'quantity qty', 'requiredDate date', enums={'status': ['pending', 'approved', 'rejected', 'issued', 'Pending', 'Approved', 'Rejected', 'Issued']}),
+    'material': fields('materialName name unit category priority description remarks', 'quantity qty', 'requiredDate date', ids={'catalogItemId': 'inventory-item'}, enums={'status': ['pending', 'approved', 'rejected', 'issued', 'Pending', 'Approved', 'Rejected', 'Issued']}),
     'logistics-trip': fields('vehicle driver vendor material notes receipt operator registrationNumber type capacity', 'startKm endKm liters rate helper total', 'date', enums={'tripType': ['vehicle_registration', 'vehicle', 'fuel', 'rental'], 'status': ['Active', 'Inactive', 'Archived']}),
     'issue': fields('title description', enums={'priority': ['Low', 'Medium', 'High', 'Critical'], 'status': ['Open', 'In Progress', 'Resolved', 'Closed', 'Archived']}),
     'inspection': fields('title type inspector notes', dates='date', enums={'status': ['Pending', 'Passed', 'Failed', 'Archived']}),
@@ -36,7 +36,7 @@ SCHEMAS = {
     'document': fields('title category revision filename storageKey contentType', 'size', enums={'status': ['Active', 'Archived']}),
     'vendor': fields('name type email phone materialsSupplied', ids={}, enums={'status': ['Active', 'Inactive']}),
     'inventory-item': fields('name category unit', 'reorderLevel', enums={'status': ['Active', 'Inactive']}),
-    'warehouse-event': fields('item materialName unit vendor issuedTo', 'qty quantity rate', 'date', ids={'targetProjectId': 'project', 'indentId': 'material'}),
+    'warehouse-event': fields('item materialName unit vendor issuedTo category', 'qty quantity rate', 'date', ids={'targetProjectId': 'project', 'indentId': 'material'}, enums={'movementType': ['issue', 'return', 'usage']}),
     'bill': fields('billNumber clientOrContractor type remarks adjustmentReason', 'grossAmount netPayable retentionDeduction tdsDeduction', 'date periodFrom periodTo', ids={'vendorId': 'vendor', 'documentId': 'document'}, enums={'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
     'expense': fields('category description submittedBy', 'amount', 'date', ids={'supervisorId': 'user'}, enums={'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
     'payment': fields('description reference', 'amount', 'date', ids={'vendorId': 'vendor', 'materialId': 'inventory-item', 'billId': 'bill', 'contractorId': 'subcontractor'}, enums={'mode': ['NEFT', 'RTGS', 'Cheque', 'Cash', 'UPI'], 'status': ['Draft', 'Pending', 'Approved', 'Rejected']}),
@@ -56,6 +56,7 @@ SCHEMAS['project']['supervisorsTimeline'] = {
     }, 'required': ['name', 'phase', 'start', 'end', 'status']},
 }
 SCHEMAS['vendor']['materialIds'] = {'type': 'array', 'entity': 'inventory-item', 'maxItems': 80}
+SCHEMAS['payment']['materialName'] = {'type': 'string', 'maxLength': 4000}
 SCHEMAS['labour-attendance']['gangId'] = {'type': 'string', 'entity': 'worker-gang'}
 SCHEMAS['labour-attendance']['amount'].pop('maximum')
 SCHEMAS['labour-attendance']['operation']['enum'].append('gang_create')
@@ -171,10 +172,12 @@ def validate(resource, path, method, body, existing=None):
         raise ValueError('Transaction / receipt reference is required for non-cash payments')
     if resource == 'payment' and not path.endswith('/reverse') and (method == 'POST' or existing is not None):
         if state.get('contractorId'):
-            if any(state.get(key) for key in ('vendorId', 'materialId', 'billId')):
+            if any(state.get(key) for key in ('vendorId', 'materialId', 'materialName', 'billId')):
                 raise ValueError('Subcontractor payments cannot include vendor, material or vendor bill links')
-        elif not state.get('vendorId') or not state.get('materialId'):
+        elif not state.get('vendorId') or not (state.get('materialId') or state.get('materialName')):
             raise ValueError('Select a vendor and material, or an assigned subcontractor')
+        if state.get('materialId') and state.get('materialName'):
+            raise ValueError('Select one material for this payment')
     if resource == 'labour-attendance':
         if 'amount' in body and Decimal(body['amount']) != Decimal(body['amount']).quantize(Decimal('0.01')):
             raise ValueError('Amount must have at most two decimal places')

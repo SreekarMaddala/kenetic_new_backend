@@ -105,15 +105,24 @@ def reconcile_stock(identity, org, apply=False):
         for event in events:
             identifier = event['itemId']
             destination = pk + '#PROJECT#' + event['targetProjectId'] if event.get('targetProjectId') else pk
-            changes = [(destination, 'BALANCE#' + identifier, event['qty'])]
+            movement = event.get('movementType', 'issue' if event['recordKind'] == 'issue-vouchers' else 'receipt')
+            changes = [(destination, 'BALANCE#' + identifier, -event['qty'] if movement in {'usage', 'return'} else event['qty'])]
             if event['recordKind'] == 'issue-vouchers':
-                changes.append((pk, 'BALANCE#' + identifier, -event['qty']))
+                if movement == 'usage':
+                    changes.append((pk, 'TOTAL#' + identifier, -event['qty']))
+                else:
+                    changes.append((pk, 'BALANCE#' + identifier, event['qty'] if movement == 'return' else -event['qty']))
             else:
                 changes.append((pk, 'TOTAL#' + identifier, event['qty']))
             for partition, sk, delta in changes:
                 row = expected.setdefault((partition, sk), {'PK': partition, 'SK': sk, 'orgId': org, 'itemId': identifier,
                                                               'name': event['item'], 'unit': event['unit'], 'quantity': Decimal(0)})
                 row['quantity'] += delta
+                if '#PROJECT#' in partition:
+                    row.setdefault('usedQty', Decimal(0))
+                    row.setdefault('returnedQty', Decimal(0))
+                    if movement in {'usage', 'return'}:
+                        row['usedQty' if movement == 'usage' else 'returnedQty'] += event['qty']
         partitions = {pk} | {row['PK'] for row in expected.values()}
         partitions |= {pk + '#PROJECT#' + project['projectId'] for project in rows(get_table('PROJECTS_TABLE'), pk, 'PROJECT#')}
         actual = {}
@@ -130,8 +139,8 @@ def reconcile_stock(identity, org, apply=False):
         changes = []
         for record_key in sorted(set(expected) | set(actual)):
             before = actual.get(record_key, {}).get('quantity', 0)
-            row = expected.get(record_key) or dict(actual[record_key], quantity=Decimal(0))
-            if before != row['quantity']:
+            row = expected.get(record_key) or dict(actual[record_key], quantity=Decimal(0), usedQty=Decimal(0), returnedQty=Decimal(0))
+            if before != row['quantity'] or any(actual.get(record_key, {}).get(field, 0) != row.get(field, 0) for field in ('usedQty', 'returnedQty')):
                 changes.append({'row': row, 'before': before, 'after': row['quantity']})
         if apply:
             for start in range(0, len(changes), 75):

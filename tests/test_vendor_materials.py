@@ -84,6 +84,22 @@ def test_payment_only_accepts_selected_vendors_catalog_material(database):
     assert call(api.finance_handler, path, "PATCH", {"materialId": sand["itemId"]})["statusCode"] == 400
 
 
+def test_payments_accept_saved_vendor_material_names_without_catalog_links(database):
+    vendor = data(call(api.supply_chain_handler, '/vendors', 'POST', {
+        'name': 'GD SAW MILL', 'materialsSupplied': 'PLYWOOD; Timber\nBoards'}))
+    body = dict(projectId=PROJECT_A, vendorId=vendor['vendorId'], materialName='plywood',
+                amount=40, mode='Cash', requestId='manual-vendor-payment')
+    for scoped in (False, True):
+        endpoint = f'/projects/{PROJECT_A}/payments' if scoped else '/payments'
+        saved = data(call(api.finance_handler, endpoint, 'POST', body))
+        assert saved['material'] == 'PLYWOOD' and saved['vendorName'] == 'GD SAW MILL'
+        assert saved['materialUnit'] == '' and not saved.get('materialId')
+    approved = data(call(api.finance_handler, f"/projects/{PROJECT_A}/payments/{saved['paymentId']}", 'PATCH', {'status': 'Approved'}))
+    assert approved['status'] == 'Approved'
+    for changes in ({'materialName': 'Steel'}, {'vendorId': supplier([])['vendorId']}, {'materialId': material()['itemId']}):
+        assert call(api.finance_handler, '/payments', 'POST', {**body, **changes, 'requestId': 'invalid-manual-payment'})['statusCode'] == 400
+
+
 def test_multiple_vendor_materials_are_available_for_payments(database):
     cement, sand = material(), material("Sand", "Tons")
     vendor = supplier([cement["itemId"], sand["itemId"]])

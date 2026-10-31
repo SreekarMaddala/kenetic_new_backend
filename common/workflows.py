@@ -4,13 +4,17 @@ from common import model
 from common.workflow_helpers import HttpError, clean, rows
 from common.workflow_validation import validate_subcontractor
 from common.finance import payment_material
-from common.inventory import catalog, stock
+from common.inventory import catalog, stock, catalog_material
 from common.workforce import labour
 from common.payroll import payroll
 from common.documents import files
 
 
 def handle(identity, domain, resource, method, path, body, query, pk, pid, org, rid):
+    if resource == 'material' and '/indents' in path and method == 'POST' and body.get('catalogItemId'):
+        item = catalog_material(org, body['catalogItemId'])
+        if item.get('status') == 'Inactive' or body.get('materialName') != item['name'] or body.get('unit') != item['unit'] or body.get('category') != item.get('category', 'General'):
+            raise ValueError('Select an active catalog material from its category')
     if resource == "subcontractor":
         if not path.startswith("/projects/") and pid:
             raise ValueError("Use the project subcontractors route for assignments")

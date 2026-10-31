@@ -191,7 +191,6 @@ def labour(identity, method, body, query, pk, org, pid):
         project = get_table("PROJECTS_TABLE").get_item(Key={"PK": f"ORG#{org}", "SK": f"PROJECT#{target}"}, ConsistentRead=True).get("Item")
         if not project or project.get("orgId") != org:
             raise AuthorizationError("Choose a project in this organization")
-        target_pk = f"ORG#{org}#PROJECT#{target}"
         item = {**allocation_key, "entityType": "worker-allocation", "labourId": wid, "projectId": target,
                 "orgId": org, "date": day, "confirmedBy": identity.user_id, "confirmedAt": now()}
         allocation_put = {"TableName": table.name, "Item": item, "ConditionExpression": "attribute_not_exists(attendanceStarted)"}
@@ -209,7 +208,6 @@ def labour(identity, method, body, query, pk, org, pid):
         else:
             allocation_put['ConditionExpression'] += ' AND attribute_not_exists(#version)'
         storage.transact(table, [
-            {"ConditionCheck": {"TableName": get_table(("PAYROLL_TABLE")).name, "Key": {"PK": target_pk, "SK": f"PAYROLL#{day[:7]}"}, "ConditionExpression": "attribute_not_exists(PK)"}},
             {"Put": allocation_put},
             audit.operation(identity, "worker.allocated", before=(prior), after=item),
         ])

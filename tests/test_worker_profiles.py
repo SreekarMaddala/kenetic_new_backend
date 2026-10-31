@@ -41,6 +41,32 @@ def test_stale_allocation_preview_and_started_attendance_cannot_be_overwritten(a
     assert call(api.workforce_handler, PATH, 'POST', {**body, 'expectedVersion': 2})['statusCode'] == 400
 
 
+def test_allocation_after_payroll_generation_does_not_change_wages_or_snapshots(app_database):
+    call, pid, wid = registered(app_database)
+    other = data(call(api.projects_handler, '/projects', 'POST', {'name': 'Other site', 'budget': 10000}))['projectId']
+    cycles = {}
+    for project, day in [(pid, '2026-10-01'), (other, '2026-10-02')]:
+        body = {'workerId': wid, 'projectId': project, 'date': day}
+        data(call(api.workforce_handler, PATH, 'POST', {**body, 'operation': 'allocate'}))
+        data(record_attendance(app_database, {**body, 'operation': 'attendance', 'status': 'Present'}))
+    for project in (pid, other):
+        cycles[project] = data(call(api.governance_handler, '/projects/' + project + '/payroll', 'POST', {'month': '2026-10'}))
+    allocation = {'workerId': wid, 'projectId': pid, 'date': '2026-10-05', 'operation': 'allocate', 'expectedVersion': 0}
+    first = data(call(api.workforce_handler, PATH, 'POST', allocation))
+    assert first['projectId'] == pid
+    moved = data(call(api.workforce_handler, PATH, 'POST', {**allocation, 'targetProjectId': other, 'expectedVersion': 1}))
+    assert moved['projectId'] == other and moved['version'] == 2
+    assert call(api.workforce_handler, PATH, 'POST', {**allocation, 'expectedVersion': 1})['statusCode'] == 400
+    # Started attendance remains protected even when payroll exists.
+    assert call(api.workforce_handler, PATH, 'POST', {**allocation, 'date': '2026-10-01', 'targetProjectId': other, 'expectedVersion': 1})['statusCode'] == 400
+    for project in (pid, other):
+        saved = data(call(api.governance_handler, '/projects/' + project + '/payroll', query={'month': '2026-10'}))[0]
+        assert saved == cycles[project]
+    rows = data(call(api.workforce_handler, PATH, query={'projectId': other, 'date': '2026-10-05'}))
+    current = next(row for row in rows if row['workerId'] == wid)
+    assert current['allocationConfirmed'] and not current['attendanceRecorded'] and current['dailyWage'] == 0
+
+
 def test_profile_attendance_daily_payments_deductions_and_payroll(app_database):
     call, pid, wid = registered(app_database)
     for day, status, paid in [('2026-10-01', 'Present', 'Paid'), ('2026-10-02', 'Half Day', 'Not paid')]:

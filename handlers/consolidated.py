@@ -361,7 +361,10 @@ def _collection_page(identity, table, resource, path, query, pk, org):
     elif resource == 'warehouse-event' or (resource == 'material' and ('/grn' in path or '/stock' in path)):
         table = get_table('INVENTORY_TABLE')
         if path.endswith('/stock'):
-            prefix = 'BALANCE#'
+            if query.get('catalog') == 'true':
+                query_pk, prefix = 'ORG#' + org, 'INVENTORY-ITEM#'
+            else:
+                prefix = 'BALANCE#'
         else:
             query_pk = 'ORG#' + org
             prefix = 'WAREHOUSE-ISSUE-VOUCHERS#' if 'issue-vouchers' in path else 'WAREHOUSE-GRN#'
@@ -377,16 +380,21 @@ def _collection_page(identity, table, resource, path, query, pk, org):
         if SUPERVISOR in identity.roles:
             items = [item for item in items if identity.user_id in item.get('supervisorIds', [])]
         items = reporting.project_totals(items, org)
-    if path.endswith('/stock'):
-        items = [dict(item, materialId=item['itemId'], stock=item.get('quantity', 0), totalStock=item.get('quantity', 0)) for item in items]
+    if path.endswith('/stock') and query.get('catalog') != 'true':
+        items = [inventory.project_material_summary(table, item, org) for item in items]
     if path.startswith('/supervisor/') and resource in {'warehouse-event', 'material'} and '/grn' in path:
         items = [item for item in items if item.get('targetProjectId') == pk.split('#PROJECT#')[-1]]
     if resource == 'inventory-item' and query.get('catalog') != 'true':
+        balances = workflow_helpers.rows(table, org=org, prefix='stock-balance#')
         for item in items:
             key = item['itemId']
             central = table.get_item(Key={'PK': pk, 'SK': 'BALANCE#' + key}, ConsistentRead=True).get('Item', {}).get('quantity', 0)
             total = table.get_item(Key={'PK': pk, 'SK': 'TOTAL#' + key}, ConsistentRead=True).get('Item', {}).get('quantity', 0)
             item.update(centralStock=central, totalStock=total, deployedStock=total - central)
+            item['projectBalances'] = [dict(projectId=b['PK'].split('#PROJECT#', 1)[1], quantity=b.get('quantity', 0),
+                usedQty=b.get('usedQty', 0), returnedQty=b.get('returnedQty', 0),
+                receivedQty=b.get('quantity', 0) + b.get('usedQty', 0) + b.get('returnedQty', 0))
+                for b in balances if b.get('itemId') == key and '#PROJECT#' in b['PK']]
     return _response(200, {'success': True, 'data': [_clean(item) for item in items], 'pagination': meta})
 
 

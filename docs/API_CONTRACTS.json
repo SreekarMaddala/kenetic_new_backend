@@ -987,6 +987,15 @@
   "material": {
     "additionalProperties": false,
     "properties": {
+      "catalogItemId": {
+        "entity": "inventory-item",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
       "date": {
         "format": "date",
         "type": "string"
@@ -1299,6 +1308,10 @@
       "materialId": {
         "entity": "inventory-item",
         "pattern": "^itm_[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "materialName": {
+        "maxLength": 4000,
         "type": "string"
       },
       "mode": {
@@ -1888,6 +1901,10 @@
   "warehouse-event": {
     "additionalProperties": false,
     "properties": {
+      "category": {
+        "maxLength": 4000,
+        "type": "string"
+      },
       "date": {
         "format": "date",
         "type": "string"
@@ -1911,6 +1928,14 @@
       },
       "materialName": {
         "maxLength": 4000,
+        "type": "string"
+      },
+      "movementType": {
+        "enum": [
+          "issue",
+          "return",
+          "usage"
+        ],
         "type": "string"
       },
       "orgId": {

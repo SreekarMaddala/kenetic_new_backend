@@ -2,8 +2,9 @@
 from common.authz import AuthorizationError, OPERATIONS_ADMIN, SUPER_ADMIN, require_role
 from common import audit, model, storage
 from common.dynamo import get_table
+from botocore.exceptions import ClientError
 import time
-from common.workflow_helpers import clean, material_kind, now, number, re_id, rows
+from common.workflow_helpers import HttpError, clean, material_kind, now, number, re_id, rows
 
 
 def stock(identity, method, path, body, pk, org, pid):
@@ -12,8 +13,11 @@ def stock(identity, method, path, body, pk, org, pid):
     if path.endswith("/stock"):
         if method != "GET":
             raise ValueError("Stock is maintained by receipts and issues")
-        return [dict(clean(i), materialId=i["itemId"], stock=i.get("quantity", 0), totalStock=i.get("quantity", 0)) for i in rows(table, pk, "BALANCE#")]
+        return [clean(project_material_summary(table, i, org)) for i in rows(table, pk, "BALANCE#")]
     kind = "issue-vouchers" if "/issue-vouchers" in path else "grn"
+    movement_type = body.get("movementType", "issue") if kind == "issue-vouchers" else "receipt"
+    if movement_type not in {"issue", "return", "usage", "receipt"}:
+        raise ValueError("Select a valid material movement")
     if method == "GET":
         return [clean(i) for i in rows(table, central, f"WAREHOUSE-{kind.upper()}#") if not path.startswith("/supervisor/") or i.get("targetProjectId") == pid]
     require_role(identity, OPERATIONS_ADMIN, SUPER_ADMIN)
@@ -38,12 +42,12 @@ def stock(identity, method, path, body, pk, org, pid):
     movement_id = (model.new_id('warehouse-event', f'{kind}|{request_id}'))
     event = {"PK": central, "SK": f"WAREHOUSE-{kind.upper()}#{movement_id}", "warehouseEventId": movement_id,
              "entityType": "warehouse-event", "recordKind": kind, "orgId": org, "targetProjectId": target,
-             "itemId": item_id, "item": name, "unit": unit, "qty": qty, "rate": number(body.get("rate", 0), "Rate"),
+             "itemId": item_id, "item": name, "unit": unit, "qty": qty, "movementType": movement_type, "rate": number(body.get("rate", 0), "Rate"),
              "vendor": str(body.get("vendor", "")), "issuedTo": str(body.get("issuedTo", "")), "createdAt": now(), "date": body.get('date') or now()[:10], "createdBy": identity.user_id, 'requestId': request_id}
     event["amount"] = event["rate"] * qty
     existing = table.get_item(Key={"PK": central, "SK": event["SK"]}, ConsistentRead=True).get("Item")
     if existing:
-        if any(existing.get(k) != event.get(k) for k in ("itemId", "qty", "targetProjectId", "rate", "vendor", "issuedTo")) or (body.get('date') and existing.get('date') != body['date']):
+        if existing.get('movementType', 'issue' if kind == 'issue-vouchers' else 'receipt') != movement_type or any(existing.get(k) != event.get(k) for k in ("itemId", "qty", "targetProjectId", "rate", "vendor", "issuedTo")) or (body.get('date') and existing.get('date') != body['date']):
             raise ValueError("Request ID already used for a different movement")
         return clean(existing)
     operations = [{"Put": {"TableName": table.name, "Item": event, "ConditionExpression": "attribute_not_exists(PK)"}}]
@@ -53,30 +57,58 @@ def stock(identity, method, path, body, pk, org, pid):
         if kind != 'grn':
             raise ValueError('Register the catalog material before issuing stock')
         catalog = {**catalog_key, 'entityType': 'inventory-item', 'itemId': item_id, 'orgId': org,
-                   'name': name, 'unit': unit, 'category': 'General', 'status': 'Active',
+                   'name': name, 'unit': unit, 'category': body.get('category') or 'General', 'status': 'Active',
                    'createdAt': now(), 'createdBy': identity.user_id, 'version': 1}
         operations.append({'Put': {'TableName': table.name, 'Item': catalog, 'ConditionExpression': 'attribute_not_exists(PK)'}})
         operations.append(audit.operation(identity, 'inventory-item.created', after=catalog))
+    if body.get('category') and body['category'] != catalog.get('category', 'General'):
+        raise ValueError('Select the material from its registered category')
+    event['category'] = catalog.get('category', 'General')
+    stock_checks = []
+
+    def shortage(partition, available):
+        source = 'the central warehouse' if partition == central else 'this project'
+        action = 'Record a warehouse receipt first or reduce the quantity.' if partition == central else 'Reduce the quantity to the remaining project balance.'
+        return HttpError(409, {'success': False, 'error': {'code': 'INSUFFICIENT_STOCK',
+            'message': f'Cannot record {qty} {unit} of {name}: {source} has {available} {unit} available. {action}'}})
+
     def balance(partition, delta, require_stock=False):
-        values = {":q": delta, ":name": name, ":unit": unit, ":org": org, ":id": item_id}
+        values = {":q": delta, ":name": name, ":unit": unit, ":org": org, ":id": item_id, ":category": catalog.get('category', 'General')}
         op = {"TableName": table.name, "Key": {"PK": partition, "SK": f"BALANCE#{item_id}"},
               "UpdateExpression": "SET #name = :name, #unit = :unit, orgId = :org, itemId = :id ADD quantity :q",
               "ExpressionAttributeNames": {"#name": "name", "#unit": "unit"}, "ExpressionAttributeValues": values}
-        op['UpdateExpression'] = 'SET #name = :name, #unit = :unit, orgId = :org, itemId = :id, entityType = :kind, OrgPK = :opk, OrgSK = :osk ADD quantity :q'
+        op['UpdateExpression'] = 'SET #name = :name, #unit = :unit, orgId = :org, itemId = :id, category = :category, entityType = :kind, OrgPK = :opk, OrgSK = :osk ADD quantity :q'
         values.update({':kind': 'stock-balance', ':opk': f'ORG#{org}', ':osk': f'stock-balance##{partition}#{item_id}'})
         if require_stock:
+            available = table.get_item(Key=op['Key'], ConsistentRead=True).get('Item', {}).get('quantity', 0)
+            if available < qty:
+                raise shortage(partition, available)
             op["ConditionExpression"] = "quantity >= :required"
             values[":required"] = qty
+            stock_checks.append((len(operations), partition, op['Key']))
+        if '#PROJECT#' in partition and delta < 0:
+            counter = 'returnedQty' if movement_type == 'return' else 'usedQty'
+            op['UpdateExpression'] += ', ' + counter + ' :moved'
+            values[':moved'] = qty
         operations.append({"Update": op})
     if kind == "issue-vouchers":
-        balance(central, -qty, True)
-        balance(f"ORG#{org}#PROJECT#{target}", qty)
+        project_pk = f"ORG#{org}#PROJECT#{target}"
+        if movement_type == 'issue':
+            balance(central, -qty, True)
+            balance(project_pk, qty)
+        else:
+            balance(project_pk, -qty, True)
+            if movement_type == 'return':
+                balance(central, qty)
+            else:
+                operations.append({'Update': {'TableName': table.name, 'Key': {'PK': central, 'SK': f'TOTAL#{item_id}'},
+                    'UpdateExpression': 'ADD quantity :quantity', 'ExpressionAttributeValues': {':quantity': -qty}}})
     else:
         balance(f"ORG#{org}#PROJECT#{target}" if target else central, qty)
         operations.append({'Update': {'TableName': table.name, 'Key': {'PK': central, 'SK': f'TOTAL#{item_id}'},
                                        'UpdateExpression': 'ADD quantity :quantity', 'ExpressionAttributeValues': {':quantity': qty}}})
     if body.get("indentId"):
-        if kind != "issue-vouchers":
+        if kind != "issue-vouchers" or movement_type != 'issue':
             raise ValueError("Only issue vouchers can fulfill material requests")
         request_table = get_table(("MATERIALS_TABLE"))
         request_key = {"PK": f"ORG#{org}#PROJECT#{target}", "SK": f"MATERIAL#{body['indentId']}"}
@@ -95,9 +127,30 @@ def stock(identity, method, path, body, pk, org, pid):
                                    'UpdateExpression': 'ADD revision :one',
                                    'ConditionExpression': 'attribute_not_exists(leaseUntil) OR leaseUntil < :now',
                                    'ExpressionAttributeValues': {':one': 1, ':now': int(time.time())}}})
-    operations.append(audit.operation(identity, "stock.received" if kind == "grn" else "stock.issued", after=event))
-    storage.transact(table, operations)
+    operations.append(audit.operation(identity, {'receipt': 'stock.received', 'issue': 'stock.issued', 'return': 'stock.returned', 'usage': 'stock.used'}[movement_type], after=event))
+    try:
+        storage.transact(table, operations)
+    except ClientError as exc:
+        # Keep the conditional writes for races after the early balance check.
+        # Report stock failures specifically instead of a generic record conflict.
+        reasons = exc.response.get('CancellationReasons', [])
+        if exc.response['Error']['Code'] == 'TransactionCanceledException':
+            for index, partition, key in stock_checks:
+                if index < len(reasons) and reasons[index].get('Code') == 'ConditionalCheckFailed':
+                    available = table.get_item(Key=key, ConsistentRead=True).get('Item', {}).get('quantity', 0)
+                    raise shortage(partition, available) from exc
+        raise
     return clean(event)
+
+
+def project_material_summary(table, item, org):
+    """Project records are a view of the shared warehouse balances."""
+    catalog = table.get_item(Key={'PK': f'ORG#{org}', 'SK': f"INVENTORY-ITEM#{item['itemId']}"}, ConsistentRead=True).get('Item', {})
+    remaining = item.get('quantity', 0)
+    used, returned = item.get('usedQty', 0), item.get('returnedQty', 0)
+    return dict(item, materialId=item['itemId'], category=catalog.get('category', item.get('category', 'General')),
+                stock=remaining, totalStock=remaining, receivedQty=remaining + used + returned,
+                usedQty=used, returnedQty=returned)
 
 
 def catalog_identity(item):
